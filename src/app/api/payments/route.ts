@@ -6,10 +6,13 @@ import { getConfig, StripeAccount } from '@/lib/config'
 let rrIndex = -1
 
 function pickStripeAccount(accounts: StripeAccount[]): StripeAccount | null {
-  const active = accounts.filter((a) => a.active && a.secretKey)
-  if (!active.length) return null
-  rrIndex = (rrIndex + 1) % active.length
-  return active[rrIndex]
+  // Usa tutti gli account che hanno una secretKey non vuota
+  const usable = accounts.filter((a) => a.secretKey && a.secretKey.trim().length > 10)
+
+  if (!usable.length) return null
+
+  rrIndex = (rrIndex + 1) % usable.length
+  return usable[rrIndex]
 }
 
 export async function POST(req: NextRequest) {
@@ -39,12 +42,12 @@ export async function POST(req: NextRequest) {
 
     if (!account) {
       return NextResponse.json(
-        { error: 'Nessun account Stripe attivo configurato' },
+        { error: 'Nessun account Stripe configurato (inserisci almeno una secretKey nell’onboarding)' },
         { status: 400 },
       )
     }
 
-    // ❌ niente apiVersion qui, lasciamo quella di default dell’account
+    // Nessuna apiVersion tipizzata qui: usiamo quella di default del tuo account Stripe
     const stripe = new Stripe(account.secretKey)
 
     const session = await stripe.checkout.sessions.create({
