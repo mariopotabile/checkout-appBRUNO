@@ -524,7 +524,7 @@ function PaymentBox({
         borderRadius: "8px",
       },
     },
-  }
+  } as StripeElementsOptions
 
   return (
     <Elements stripe={stripePromise} options={options}>
@@ -532,7 +532,6 @@ function PaymentBox({
         sessionId={sessionId}
         customer={customer}
         totalFormatted={totalFormatted}
-        clientSecret={clientSecret}
       />
     </Elements>
   )
@@ -546,23 +545,44 @@ function PaymentBoxInner({
   sessionId: string
   customer: Customer
   totalFormatted: string
-  clientSecret: string
 }) {
   const stripe = useStripe()
   const elements = useElements()
 
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cardholderName, setCardholderName] = useState("")
 
   async function handlePay() {
     if (!stripe || !elements) return
+
+    if (!cardholderName.trim()) {
+      setError("Inserisci il nome completo dell'intestatario della carta.")
+      return
+    }
+
     setPaying(true)
     setError(null)
 
-    // conferma pagamento con Payment Element (no redirect)
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       redirect: "if_required",
+      confirmParams: {
+        payment_method_data: {
+          billing_details: {
+            name: cardholderName.trim(),
+            email: customer.email || undefined,
+            address: {
+              line1: customer.address1 || undefined,
+              line2: customer.address2 || undefined,
+              city: customer.city || undefined,
+              postal_code: customer.zip || undefined,
+              state: customer.province || undefined,
+              country: customer.country || undefined,
+            },
+          },
+        },
+      },
     } as any)
 
     if (error) {
@@ -573,7 +593,7 @@ function PaymentBoxInner({
     }
 
     if (paymentIntent && paymentIntent.status === "succeeded") {
-      // CREA ORDINE SHOPIFY
+      // crea ordine Shopify
       try {
         await fetch("/api/shopify/create-order", {
           method: "POST",
@@ -599,14 +619,31 @@ function PaymentBoxInner({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-gray-300 bg-white p-4">
+      <div className="bg-white border border-gray-200 rounded-md p-4 space-y-3">
+        {/* Element Stripe con numero carta, scadenza, CVC, ecc. */}
         <PaymentElement />
+
+        {/* Nome completo intestatario carta */}
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-gray-700">
+            Nome completo sull&apos;intestatario della carta
+          </label>
+          <input
+            type="text"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            placeholder="Es. Mario Rossi"
+            value={cardholderName}
+            onChange={e => setCardholderName(e.target.value)}
+          />
+        </div>
       </div>
+
       {error && (
         <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
           {error}
         </div>
       )}
+
       <button
         type="button"
         onClick={handlePay}
@@ -615,13 +652,18 @@ function PaymentBoxInner({
       >
         {paying ? "Elaborazione…" : `Paga ora ${totalFormatted}`}
       </button>
+
       <p className="text-[11px] text-gray-500">
-        Pagamento gestito da Stripe. I dati della tua carta non passano mai sui
-        nostri server.
+        Tutte le transazioni sono sicure e crittografate. Il pagamento è
+        gestito da Stripe.
       </p>
     </div>
   )
 }
+
+/* -----------------------------
+   EXPORT PAGINA
+------------------------------ */
 
 export default function CheckoutPage() {
   return (
