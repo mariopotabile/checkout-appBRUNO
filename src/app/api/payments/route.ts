@@ -4,7 +4,7 @@ import Stripe from "stripe"
 import { db } from "@/lib/firebaseAdmin"
 import { getConfig } from "@/lib/config"
 
-const COLLECTION = "checkoutSessions"
+const COLLECTION = "cartSessions"   // ✅ FIX
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
     const currency = (data.currency || "EUR").toString().toLowerCase()
 
     const subtotalCents =
-      typeof data.subtotalCents === "number" ? data.subtotalCents : 0
+      typeof data.subtotalCents === "number" ? data.subtotalCents : (data.totals?.subtotal ?? 0)
+
     const shippingCents =
       typeof data.shippingCents === "number" ? data.shippingCents : 0
 
@@ -43,7 +44,6 @@ export async function POST(req: NextRequest) {
         : subtotalCents + shippingCents
 
     if (!totalCents || totalCents < 50) {
-      // Stripe non accetta importi < 0,50
       return NextResponse.json(
         {
           error:
@@ -53,11 +53,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2) Recupera config (Stripe + dominio checkout) da Firebase
     const cfg = await getConfig()
 
-    // Usa il primo account Stripe con secretKey valorizzata,
-    // oppure STRIPE_SECRET_KEY da environment come fallback.
     const firstStripe =
       (cfg.stripeAccounts || []).find((a) => a.secretKey) || null
 
@@ -72,10 +69,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ✅ NIENTE apiVersion qui: usiamo quella di default per evitare errori di tipo
     const stripe = new Stripe(secretKey)
 
-    // Dominio per redirect success/cancel
     const baseDomain =
       cfg.checkoutDomain ||
       process.env.NEXT_PUBLIC_CHECKOUT_DOMAIN ||
@@ -90,10 +85,8 @@ export async function POST(req: NextRequest) {
       sessionId,
     )}&canceled=1`
 
-    // 3) Crea la Checkout Session Stripe (one line item = totale ordine)
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
@@ -102,7 +95,7 @@ export async function POST(req: NextRequest) {
               name: "Ordine Not For Resale",
               description: `Checkout session ${sessionId}`,
             },
-            unit_amount: totalCents, // totale in centesimi (già include eventuale spedizione)
+            unit_amount: totalCents,
           },
           quantity: 1,
         },
@@ -111,14 +104,8 @@ export async function POST(req: NextRequest) {
       cancel_url: cancelUrl,
     })
 
-    if (!session.url) {
-      return NextResponse.json(
-        { error: "Impossibile ottenere l'URL di Checkout Stripe" },
-        { status: 500 },
-      )
-    }
-
     return NextResponse.json({ url: session.url }, { status: 200 })
+
   } catch (error: any) {
     console.error("[/api/payments] errore:", error)
     return NextResponse.json(
