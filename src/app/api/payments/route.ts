@@ -1,12 +1,11 @@
 // src/app/api/payments/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
-import { getConfig, StripeAccount } from '@/lib/config'
+import { NextRequest, NextResponse } from "next/server"
+import Stripe from "stripe"
+import { getConfig, StripeAccount } from "@/lib/config"
 
 let rrIndex = -1
 
 function pickStripeAccount(accounts: StripeAccount[]): StripeAccount | null {
-  // Usa tutti gli account che hanno una secretKey non vuota
   const usable = accounts.filter((a) => a.secretKey && a.secretKey.trim().length > 10)
 
   if (!usable.length) return null
@@ -20,39 +19,38 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     let { totalAmount, currency, description } = body
 
-    if (!totalAmount || typeof totalAmount !== 'number') {
+    if (!totalAmount || typeof totalAmount !== "number") {
       return NextResponse.json(
-        { error: 'totalAmount (in centesimi) mancante o non valido' },
+        { error: "totalAmount (in centesimi) mancante o non valido" },
         { status: 400 },
       )
     }
 
     if (totalAmount < 50) {
-      return NextResponse.json(
-        { error: 'Importo minimo 0,50 €' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Importo minimo 0,50 €" }, { status: 400 })
     }
 
-    currency = (currency || 'EUR').toLowerCase()
-    description = description || 'Ordine Shopify via checkout custom'
+    currency = (currency || "EUR").toLowerCase()
+    description = description || "Ordine Shopify via checkout custom"
 
     const cfg = await getConfig()
     const account = pickStripeAccount(cfg.stripeAccounts)
 
     if (!account) {
       return NextResponse.json(
-        { error: 'Nessun account Stripe configurato (inserisci almeno una secretKey nell’onboarding)' },
+        {
+          error:
+            "Nessun account Stripe configurato. Apri l'onboarding e inserisci almeno una secret key.",
+        },
         { status: 400 },
       )
     }
 
-    // Nessuna apiVersion tipizzata qui: usiamo quella di default del tuo account Stripe
     const stripe = new Stripe(account.secretKey)
 
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
+      mode: "payment",
+      payment_method_types: ["card"],
       line_items: [
         {
           quantity: 1,
@@ -66,26 +64,23 @@ export async function POST(req: NextRequest) {
         },
       ],
       success_url: cfg.checkoutDomain
-        ? `${cfg.checkoutDomain.replace(/\/$/, '')}/thank-you?session_id={CHECKOUT_SESSION_ID}`
-        : 'https://google.com',
+        ? `${cfg.checkoutDomain.replace(/\/$/, "")}/thank-you?session_id={CHECKOUT_SESSION_ID}`
+        : "https://google.com",
       cancel_url: cfg.checkoutDomain
-        ? `${cfg.checkoutDomain.replace(/\/$/, '')}/cancel?canceled=1`
-        : 'https://google.com',
+        ? `${cfg.checkoutDomain.replace(/\/$/, "")}/cancel?canceled=1`
+        : "https://google.com",
     })
 
     if (!session.url) {
       return NextResponse.json(
-        { error: 'Stripe non ha restituito una URL di checkout' },
+        { error: "Stripe non ha restituito una URL di checkout" },
         { status: 500 },
       )
     }
 
     return NextResponse.json({ url: session.url })
   } catch (err: any) {
-    console.error('[payments] Stripe error:', err)
-    return NextResponse.json(
-      { error: err.message || 'Errore Stripe' },
-      { status: 500 },
-    )
+    console.error("[payments] Stripe error:", err)
+    return NextResponse.json({ error: err.message || "Errore Stripe" }, { status: 500 })
   }
 }

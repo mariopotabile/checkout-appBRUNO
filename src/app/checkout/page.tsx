@@ -1,53 +1,43 @@
-'use client'
+"use client"
 
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
-
-interface CheckoutItem {
-  id: number
-  title: string
-  variantTitle: string
-  quantity: number
-  price: number
-  line_price: number
-  image?: string
-  sku?: string
-}
-
-interface Snapshot {
-  currency: string
-  items: CheckoutItem[]
-  subtotalAmount: number
-  totalAmount: number
-}
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import CheckoutLayout from "../../components/CheckoutLayout"
+import Summary from "../../components/Summary"
 
 export default function CheckoutPage() {
   const searchParams = useSearchParams()
-  const sessionId = searchParams.get('sessionId')
+  const sessionId = searchParams.get("sessionId")
 
+  const [cart, setCart] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
-  const [paying, setPaying] = useState(false)
 
   useEffect(() => {
-    if (!sessionId) {
-      setError('Nessuna sessione di checkout trovata.')
-      setLoading(false)
-      return
-    }
-
     async function load() {
+      if (!sessionId) {
+        setError("Sessione di checkout non valida")
+        setLoading(false)
+        return
+      }
+
       try {
-        const res = await fetch(`/api/cart-session?sessionId=${encodeURIComponent(sessionId)}`)
+        // 👇 qui il fix: sessionId || "" così TS lo vede come string
+        const url = `/api/cart-session?sessionId=${encodeURIComponent(
+          sessionId || ""
+        )}`
+        const res = await fetch(url)
+
         const data = await res.json()
+
         if (!res.ok) {
-          throw new Error(data.error || 'Errore nel recupero del carrello')
+          throw new Error(data.error || "Errore nel recupero del carrello")
         }
-        setSnapshot(data.snapshot)
+
+        setCart(data.cart)
       } catch (err: any) {
-        console.error(err)
-        setError(err.message || 'Errore')
+        console.error("Checkout load error:", err)
+        setError(err.message || "Errore sconosciuto")
       } finally {
         setLoading(false)
       }
@@ -56,130 +46,61 @@ export default function CheckoutPage() {
     load()
   }, [sessionId])
 
-  const handlePay = async () => {
-    if (!snapshot) return
-    if (paying) return
-    setPaying(true)
-
-    try {
-      const res = await fetch('/api/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          totalAmount: snapshot.totalAmount, // centesimi
-          currency: snapshot.currency || 'EUR',
-          description: 'Ordine Shopify via checkout custom',
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok || !data.url) {
-        console.error(data)
-        throw new Error(data.error || 'Errore nella creazione del pagamento')
-      }
-
-      // Redirect alla pagina di pagamento Stripe
-      window.location.href = data.url
-    } catch (err: any) {
-      console.error(err)
-      alert(err.message || 'Errore nel pagamento')
-      setPaying(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p>Caricamento carrello...</p>
-      </main>
-    )
-  }
-
-  if (error || !snapshot) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="p-6 border rounded-md max-w-md text-center space-y-4">
-          <h1 className="text-xl font-semibold">Errore checkout</h1>
-          <p>{error || 'Carrello non disponibile.'}</p>
-        </div>
-      </main>
-    )
-  }
-
-  const currency = snapshot.currency || 'EUR'
-  const formatMoney = (value: number) =>
-    (value / 100).toLocaleString('it-IT', {
-      style: 'currency',
-      currency,
-    })
-
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-4xl bg-white shadow-lg rounded-2xl p-8 grid md:grid-cols-[2fr,1fr] gap-8">
-        <section className="space-y-4">
-          <h1 className="text-2xl font-semibold">Riepilogo ordine</h1>
-          <ul className="space-y-3">
-            {snapshot.items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between border-b pb-3"
-              >
-                <div className="flex items-center gap-3">
+    <CheckoutLayout>
+      {loading ? (
+        <div className="py-20 text-center text-sm text-gray-500">
+          Caricamento carrello…
+        </div>
+      ) : error ? (
+        <div className="py-20 text-center text-sm text-red-600">
+          {error}
+        </div>
+      ) : !cart ? (
+        <div className="py-20 text-center text-sm text-gray-500">
+          Nessun carrello trovato.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-8 py-8">
+          {/* Colonna prodotti */}
+          <section className="space-y-4">
+            <h1 className="text-xl font-semibold">Riepilogo prodotti</h1>
+            <div className="space-y-3">
+              {cart.items?.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 bg-white rounded-xl shadow-sm p-3"
+                >
                   {item.image && (
                     <img
                       src={item.image}
                       alt={item.title}
-                      className="w-12 h-12 object-cover rounded-md"
+                      className="w-16 h-16 object-cover rounded-lg border"
                     />
                   )}
-                  <div>
-                    <p className="font-medium">{item.title}</p>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{item.title}</div>
                     {item.variantTitle && (
-                      <p className="text-sm text-gray-500">
+                      <div className="text-xs text-gray-500">
                         {item.variantTitle}
-                      </p>
+                      </div>
                     )}
-                    <p className="text-sm text-gray-500">
+                    <div className="text-xs text-gray-500">
                       Quantità: {item.quantity}
-                    </p>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold">
+                    {((item.price ?? 0) / 100).toFixed(2)} €
                   </div>
                 </div>
-                <span className="font-medium">
-                  {formatMoney(item.line_price)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+              ))}
+            </div>
+          </section>
 
-        <aside className="space-y-4 border-l pl-0 md:pl-4">
-          <h2 className="text-xl font-semibold">Totale</h2>
-          <div className="flex justify-between">
-            <span>Subtotale</span>
-            <span>{formatMoney(snapshot.subtotalAmount)}</span>
-          </div>
-          <div className="flex justify-between font-semibold text-lg">
-            <span>Totale</span>
-            <span>{formatMoney(snapshot.totalAmount)}</span>
-          </div>
-
-          <button
-            onClick={handlePay}
-            disabled={paying}
-            className="btn-primary w-full mt-4 py-3 rounded-xl"
-            style={{
-              backgroundColor: 'black',
-              color: 'white',
-              fontWeight: 600,
-            }}
-          >
-            {paying ? 'Reindirizzamento a Stripe...' : 'Paga ora con carta'}
-          </button>
-        </aside>
-      </div>
-    </main>
+          {/* Colonna riepilogo + pagamento */}
+          <Summary cart={cart} />
+        </div>
+      )}
+    </CheckoutLayout>
   )
 }

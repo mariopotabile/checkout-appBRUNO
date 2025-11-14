@@ -1,180 +1,99 @@
 // src/app/api/shopify-cart/route.ts
-import { NextRequest } from 'next/server'
-import { getConfig } from '@/lib/config'
+import { NextRequest, NextResponse } from "next/server"
+import { randomUUID } from "crypto"
+import { getConfig } from "@/lib/config"
+import { db } from "@/lib/firebaseAdmin"
 
-export const runtime = 'nodejs'
-
-function toCents(amount?: string | number | null): number {
-  if (amount == null) return 0
-  const n = typeof amount === 'number' ? amount : parseFloat(amount)
-  if (Number.isNaN(n)) return 0
-  return Math.round(n * 100)
-}
+// Questo endpoint verrà chiamato da Shopify (via AJAX o redirect)
+// con i dati del carrello. Crea una "sessione" nel nostro DB
+// e restituisce una URL di checkout esterno.
 
 export async function POST(req: NextRequest) {
-  let body: any
   try {
-    body = await req.json()
-  } catch {
-    return Response.json({ error: true, message: 'Invalid JSON body' }, { status: 400 })
-  }
+    const body = await req.json()
 
-  const cartId = body?.cartId
-  if (!cartId) {
-    return Response.json({ error: true, message: 'Missing cartId' }, { status: 400 })
-  }
-
-  const cfg = getConfig()
-  const domain = cfg.shopifyDomain
-  const storefrontToken = cfg.shopifyStorefrontToken || process.env.SHOPIFY_STOREFRONT_TOKEN
-
-  if (!domain || !storefrontToken) {
-    return Response.json(
-      { error: true, message: 'Shopify domain or Storefront token not configured' },
-      { status: 500 }
-    )
-  }
-
-  const url = `https://${domain}/api/2024-10/graphql.json`
-
-  const query = `
-    query Cart($id: ID!) {
-      cart(id: $id) {
-        id
-        buyerIdentity {
-          email
-        }
-        cost {
-          subtotalAmount {
-            amount
-            currencyCode
-          }
-          totalAmount {
-            amount
-            currencyCode
-          }
-          totalTaxAmount {
-            amount
-            currencyCode
-          }
-        }
-        lines(first: 50) {
-          edges {
-            node {
-              quantity
-              cost {
-                amountPerQuantity {
-                  amount
-                }
-                totalAmount {
-                  amount
-                }
-              }
-              merchandise {
-                ... on ProductVariant {
-                  title
-                  product {
-                    title
-                  }
-                  image {
-                    url
-                  }
-                }
-              }
-            }
-          }
-        }
+    // Ti lascio la struttura larga per ora, così puoi adattarla
+    const {
+      cartToken,
+      items,
+      totals,
+    }: {
+      cartToken?: string
+      items?: any[]
+      totals?: {
+        subtotal?: number
+        total?: number
+        currency?: string
       }
+    } = body
+
+    if (!cartToken || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: "Payload carrello non valido" },
+        { status: 400 }
+      )
     }
-  `
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Shopify-Storefront-Access-Token': storefrontToken,
-    },
-    body: JSON.stringify({
-      query,
-      variables: { id: cartId },
-    }),
-  })
+    // ⚠️ QUI va usato `await`
+    const cfg = await getConfig()
 
-  if (!res.ok) {
-    const text = await res.text()
-    console.error('[shopify-cart] HTTP error', res.status, text)
-    return Response.json(
-      { error: true, message: `Shopify Storefront error: HTTP ${res.status}` },
+    // Calcolo base importi (se Shopify te li passa già, li usi da `totals`)
+    const subtotalPrice =
+      typeof totals?.subtotal === "number"
+        ? totals.subtotal
+        : items.reduce(
+            (sum, item) =>
+              sum + (item.price ?? 0) * (item.quantity ?? 1),
+            0
+          )
+
+    const totalPrice =
+      typeof totals?.total === "number" ? totals.total : subtotalPrice
+
+    const currency = totals?.currency || "EUR"
+
+    const sessionId = randomUUID()
+
+    const sessionDoc = {
+      shopifyCartToken: cartToken,
+      items,
+      subtotalPrice,
+      totalPrice,
+      currency,
+      createdAt: Date.now(),
+    }
+
+    // Salviamo la sessione in Firestore
+    await db.collection("cartSessions").doc(sessionId).set(sessionDoc)
+
+    // Dominio checkout da cui serviamo la pagina /checkout
+    const checkoutDomain =
+      process.env.NEXT_PUBLIC_CHECKOUT_DOMAIN || cfg.checkoutDomain
+
+    if (!checkoutDomain) {
+      return NextResponse.json(
+        { error: "Checkout domain non configurato" },
+        { status: 500 }
+      )
+    }
+
+    const base = checkoutDomain.replace(/\/$/, "")
+    const checkoutUrl = `${base}/checkout?sessionId=${encodeURIComponent(
+      sessionId
+    )}`
+
+    return NextResponse.json(
+      {
+        sessionId,
+        checkoutUrl,
+      },
+      { status: 200 }
+    )
+  } catch (err) {
+    console.error("[shopify-cart] error:", err)
+    return NextResponse.json(
+      { error: "Errore interno nel creare la sessione di checkout" },
       { status: 500 }
     )
   }
-
-  const json = await res.json()
-  const cart = json?.data?.cart
-
-  if (!cart) {
-    console.error('[shopify-cart] No cart in response', json)
-    return Response.json(
-      { error: true, message: 'Cart not found in Shopify response' },
-      { status: 500 }
-    )
-  }
-
-  const currency =
-    cart.cost?.totalAmount?.currencyCode ||
-    cart.cost?.subtotalAmount?.currencyCode ||
-    'EUR'
-
-  const subtotalCents = toCents(cart.cost?.subtotalAmount?.amount)
-  const totalCents = toCents(cart.cost?.totalAmount?.amount)
-  const taxCents = toCents(cart.cost?.totalTaxAmount?.amount)
-  const shippingCents = 0 // la Cart API non espone shipping in modo diretto; lo gestiremo in step successivo
-
-  // stima sconto = (subtotal + tax + shipping) - total (se positivo)
-  const discountTotal = Math.max(0, subtotalCents + taxCents + shippingCents - totalCents)
-
-  const items = (cart.lines?.edges || []).map((edge: any) => {
-    const node = edge?.node
-    const qty = Number(node?.quantity) || 0
-    const totalAmount = toCents(node?.cost?.totalAmount?.amount)
-    const perQty = toCents(node?.cost?.amountPerQuantity?.amount)
-    const merchandise = node?.merchandise
-
-    const title =
-      merchandise?.product?.title && merchandise?.title
-        ? `${merchandise.product.title} - ${merchandise.title}`
-        : merchandise?.product?.title || merchandise?.title || 'Articolo'
-
-    const image = merchandise?.image?.url || ''
-
-    // linePrice = prezzo per unità effettivo (dopo sconti)
-    const unitEffective = qty > 0 ? Math.round(totalAmount / qty) : perQty
-
-    return {
-      title,
-      quantity: qty,
-      unitPrice: unitEffective, // centesimi
-      linePrice: unitEffective, // usato dal frontend come “prezzo scontato per unità”
-      image,
-    }
-  })
-
-  const payload = {
-    currency,
-    items,
-    subtotal: subtotalCents,
-    discountTotal,
-    shipping: shippingCents,
-    tax: taxCents,
-    total: totalCents,
-    email: cart.buyerIdentity?.email || '',
-  }
-
-  console.log('[shopify-cart] normalized cart', {
-    total: totalCents,
-    items: items.length,
-    currency,
-  })
-
-  return Response.json(payload)
 }

@@ -1,181 +1,188 @@
-'use client'
-import { useEffect, useState } from 'react'
+"use client"
 
-type StripeAccountForm = {
+import { useEffect, useState } from "react"
+
+interface StripeAccountForm {
   label: string
   secretKey: string
   webhookSecret: string
 }
 
 export default function OnboardingPage() {
-  const [form, setForm] = useState({
-    shopifyDomain: '',
-    shopifyToken: '',
-    shopifyApiVersion: '2024-10',
-    checkoutDomain: 'http://localhost:3000',
-    stripeAccounts: [
-      { label: 'Account 1', secretKey: '', webhookSecret: '' },
-      { label: 'Account 2', secretKey: '', webhookSecret: '' },
-      { label: 'Account 3', secretKey: '', webhookSecret: '' },
-      { label: 'Account 4', secretKey: '', webhookSecret: '' },
-    ] as StripeAccountForm[],
-  })
-  const [saved, setSaved] = useState<null | { ok: boolean; count: number }>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  const [checkoutDomain, setCheckoutDomain] = useState("")
+  const [shopDomain, setShopDomain] = useState("")
+  const [shopToken, setShopToken] = useState("")
+
+  const [stripeAccounts, setStripeAccounts] = useState<StripeAccountForm[]>([
+    { label: "Account 1", secretKey: "", webhookSecret: "" },
+    { label: "Account 2", secretKey: "", webhookSecret: "" },
+    { label: "Account 3", secretKey: "", webhookSecret: "" },
+    { label: "Account 4", secretKey: "", webhookSecret: "" },
+  ])
 
   useEffect(() => {
-    // precompila campi NON sensibili dal backend
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(cfg => {
-        setForm(prev => ({
-          ...prev,
-          shopifyDomain: cfg.shopifyDomain || prev.shopifyDomain,
-          shopifyApiVersion: cfg.shopifyApiVersion || prev.shopifyApiVersion,
-          checkoutDomain: cfg.checkoutDomain || prev.checkoutDomain,
-          // stripeAccounts dal GET hanno segreti vuoti: manteniamo i nostri placeholder di default
-        }))
-      })
-      .catch(() => {})
+    async function load() {
+      try {
+        const res = await fetch("/api/config")
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data.error || "Errore nel recupero config")
+        }
+
+        setCheckoutDomain(data.checkoutDomain || "")
+        setShopDomain(data.shopify?.shopDomain || "")
+        setShopToken(data.shopify?.adminToken || "")
+        if (Array.isArray(data.stripeAccounts)) {
+          setStripeAccounts((prev) =>
+            prev.map((acc, idx) => ({
+              ...acc,
+              label: data.stripeAccounts[idx]?.label || acc.label,
+            })),
+          )
+        }
+      } catch (err: any) {
+        console.error("Onboarding load error:", err)
+        setError(err.message || "Errore nel recupero configurazione")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
   }, [])
-
-  function changeField(e: React.ChangeEvent<HTMLInputElement>) {
-    setForm({ ...form, [e.target.name]: e.target.value })
-  }
-
-  function changeAccount(idx: number, key: keyof StripeAccountForm, value: string) {
-    const copy = [...form.stripeAccounts]
-    copy[idx] = { ...copy[idx], [key]: value }
-    setForm({ ...form, stripeAccounts: copy })
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSaved(null)
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
 
-    // invia al backend; verranno filtrati quelli senza secretKey
-    const res = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
+    try {
+      const body = {
+        checkoutDomain,
+        shopify: {
+          shopDomain,
+          adminToken: shopToken,
+          apiVersion: "2024-10",
+        },
+        stripeAccounts,
+      }
 
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setSaved({ ok: true, count: data?.stripeAccountsSaved ?? 0 })
-    } else {
-      setSaved({ ok: false, count: 0 })
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Errore nel salvataggio")
+      }
+
+      setSuccess("Configurazione salvata con successo ✅")
+    } catch (err: any) {
+      console.error("Onboarding save error:", err)
+      setError(err.message || "Errore nel salvataggio")
+    } finally {
+      setSaving(false)
     }
   }
 
+  function updateStripeAccount(index: number, field: keyof StripeAccountForm, value: string) {
+    setStripeAccounts((prev) =>
+      prev.map((acc, idx) => (idx === index ? { ...acc, [field]: value } : acc)),
+    )
+  }
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Caricamento…</div>
+  }
+
   return (
-    <main className="mx-auto max-w-3xl p-8 space-y-8">
-      <h1 className="text-2xl font-semibold">Onboarding Checkout</h1>
-      <p className="text-gray-600">Configura Shopify e fino a 4 account Stripe. Puoi salvarne anche solo 1.</p>
+    <main className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-lg p-8 space-y-6">
+        <h1 className="text-2xl font-bold mb-2">Onboarding Checkout</h1>
+        <p className="text-gray-600 text-sm">
+          Configura dominio di checkout, Shopify e account Stripe (fino a 4).
+        </p>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <section className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Shopify</h2>
-          <div>
-            <label className="label">Shopify Store Domain</label>
+        {error && <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>}
+        {success && <div className="p-3 bg-green-100 text-green-700 rounded-lg text-sm">{success}</div>}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <section className="space-y-3">
+            <h2 className="font-semibold text-lg">Dominio Checkout</h2>
             <input
-              className="input"
-              name="shopifyDomain"
-              value={form.shopifyDomain}
-              onChange={changeField}
-              placeholder="mystore.myshopify.com"
+              type="text"
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="https://checkout-app-xxxxx.vercel.app"
+              value={checkoutDomain}
+              onChange={(e) => setCheckoutDomain(e.target.value)}
               required
             />
-          </div>
-          <div>
-            <label className="label">Shopify Admin API Token</label>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-semibold text-lg">Shopify</h2>
             <input
-              className="input"
-              name="shopifyToken"
-              value={form.shopifyToken}
-              onChange={changeField}
-              placeholder="shpat_..."
+              type="text"
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="imjsqk-my.myshopify.com"
+              value={shopDomain}
+              onChange={(e) => setShopDomain(e.target.value)}
               required
             />
-          </div>
-          <div>
-            <label className="label">Shopify API Version</label>
             <input
-              className="input"
-              name="shopifyApiVersion"
-              value={form.shopifyApiVersion}
-              onChange={changeField}
-              placeholder="2024-10"
+              type="password"
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Admin API Access Token"
+              value={shopToken}
+              onChange={(e) => setShopToken(e.target.value)}
+              required
             />
-          </div>
-          <div>
-            <label className="label">Checkout Domain</label>
-            <input
-              className="input"
-              name="checkoutDomain"
-              value={form.checkoutDomain}
-              onChange={changeField}
-              placeholder="http://localhost:3000"
-            />
-          </div>
-        </section>
+          </section>
 
-        <section className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Stripe (fino a 4 account)</h2>
+          <section className="space-y-3">
+            <h2 className="font-semibold text-lg">Stripe accounts</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {form.stripeAccounts.map((acc, idx) => (
-              <div key={idx} className="border rounded-xl p-4 space-y-3">
-                <div>
-                  <label className="label">Label</label>
-                  <input
-                    className="input"
-                    value={acc.label}
-                    onChange={(e) => changeAccount(idx, 'label', e.target.value)}
-                    placeholder={`Account ${idx + 1}`}
-                  />
+            {stripeAccounts.map((acc, idx) => (
+              <div key={idx} className="border rounded-lg p-4 space-y-2 bg-gray-50">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold">{acc.label}</span>
+                  <span className="text-xs text-gray-500">#{idx + 1}</span>
                 </div>
-                <div>
-                  <label className="label">Stripe Secret Key (sk_...)</label>
-                  <input
-                    className="input"
-                    value={acc.secretKey}
-                    onChange={(e) => changeAccount(idx, 'secretKey', e.target.value)}
-                    placeholder="sk_test_..."
-                  />
-                </div>
-                <div>
-                  <label className="label">Webhook Secret (whsec_...)</label>
-                  <input
-                    className="input"
-                    value={acc.webhookSecret}
-                    onChange={(e) => changeAccount(idx, 'webhookSecret', e.target.value)}
-                    placeholder="whsec_..."
-                  />
-                </div>
+                <input
+                  type="text"
+                  className="w-full border rounded-lg px-3 py-2 text-xs"
+                  placeholder="sk_live_..."
+                  value={acc.secretKey}
+                  onChange={(e) => updateStripeAccount(idx, "secretKey", e.target.value)}
+                />
+                <input
+                  type="text"
+                  className="w-full border rounded-lg px-3 py-2 text-xs"
+                  placeholder="whsec_... (webhook secret, opzionale)"
+                  value={acc.webhookSecret}
+                  onChange={(e) => updateStripeAccount(idx, "webhookSecret", e.target.value)}
+                />
               </div>
             ))}
-          </div>
+          </section>
 
-          <p className="text-sm text-gray-500">
-            Inserisci almeno <strong>una</strong> <code>sk_</code> valida. I campi vuoti verranno ignorati.
-          </p>
-        </section>
-
-        <div className="pt-2">
-          <button className="btn-primary w-full" type="submit">Salva configurazione</button>
-        </div>
-
-        {saved && saved.ok && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700">
-            ✅ Config salvata. Account Stripe attivi: <strong>{saved.count}</strong>
-          </div>
-        )}
-        {saved && !saved.ok && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            ❌ Errore salvataggio configurazione.
-          </div>
-        )}
-      </form>
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-60"
+          >
+            {saving ? "Salvataggio..." : "Salva configurazione"}
+          </button>
+        </form>
+      </div>
     </main>
   )
 }

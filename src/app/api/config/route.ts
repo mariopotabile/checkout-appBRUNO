@@ -1,47 +1,57 @@
 // src/app/api/config/route.ts
-import { NextRequest } from 'next/server'
-import { getConfig, setConfig, AppConfig, StripeAccount } from '@/lib/config'
+import { NextRequest, NextResponse } from "next/server"
+import { getConfig, setConfig, AppConfig } from "@/lib/config"
 
-// GET: restituisce la config senza segreti (sk/whsec/token non esposti)
 export async function GET() {
-  const cfg = getConfig()
+  try {
+    const cfg = await getConfig()
 
-  const safeAccounts = (cfg.stripeAccounts || []).slice(0, 4).map((a) => ({
-    label: a.label || '',
-    secretKey: '',       // non esponiamo segreti
-    webhookSecret: '',   // idem
-  }))
+    // non mandiamo i secret in chiaro al client
+    const safeCfg: AppConfig = {
+      ...cfg,
+      stripeAccounts: cfg.stripeAccounts.map((acc) => ({
+        ...acc,
+        secretKey: "",
+        webhookSecret: "",
+      })),
+    }
 
-  return Response.json({
-    shopifyDomain: cfg.shopifyDomain,
-    shopifyApiVersion: cfg.shopifyApiVersion,
-    checkoutDomain: cfg.checkoutDomain,
-    shopifyStorefrontToken: '', // mai esposto
-    stripeAccounts: safeAccounts,
-  })
+    return NextResponse.json(safeCfg)
+  } catch (err: any) {
+    console.error("[config GET] error:", err)
+    return NextResponse.json({ error: err.message || "Errore nel recupero config" }, { status: 500 })
+  }
 }
 
-// POST: salva config (accetta anche parziale; ignora account senza sk_)
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  try {
+    const body = await req.json()
 
-  const incomingAccounts: StripeAccount[] = Array.isArray(body.stripeAccounts)
-    ? body.stripeAccounts
-    : []
+    const checkoutDomain = (body.checkoutDomain || "").trim()
 
-  const next: Partial<AppConfig> = {
-    shopifyDomain: body.shopifyDomain ?? '',
-    shopifyToken: body.shopifyToken ?? '',
-    shopifyApiVersion: body.shopifyApiVersion ?? '2024-10',
-    checkoutDomain: body.checkoutDomain ?? 'http://localhost:3000',
-    shopifyStorefrontToken: body.shopifyStorefrontToken ?? '',
-    stripeAccounts: incomingAccounts,
+    const shopify = {
+      shopDomain: (body.shopify?.shopDomain || "").trim(),
+      adminToken: (body.shopify?.adminToken || "").trim(),
+      apiVersion: (body.shopify?.apiVersion || "2024-10").trim(),
+    }
+
+    const stripeAccounts = (body.stripeAccounts || []).slice(0, 4).map((acc: any, idx: number) => ({
+      label: acc.label || `Account ${idx + 1}`,
+      secretKey: (acc.secretKey || "").trim(),
+      webhookSecret: (acc.webhookSecret || "").trim(),
+    }))
+
+    const newCfg: Partial<AppConfig> = {
+      checkoutDomain,
+      shopify,
+      stripeAccounts,
+    }
+
+    await setConfig(newCfg)
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    console.error("[config POST] error:", err)
+    return NextResponse.json({ error: err.message || "Errore nel salvataggio config" }, { status: 500 })
   }
-
-  setConfig(next)
-
-  const cfg = getConfig()
-  const count = cfg.stripeAccounts.length
-
-  return Response.json({ ok: true, stripeAccountsSaved: count })
 }
