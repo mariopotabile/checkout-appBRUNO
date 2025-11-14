@@ -12,7 +12,7 @@ type CheckoutItem = {
   title: string;
   variant_title?: string;
   quantity: number;
-  price: number; // centesimi
+  price: number; // in centesimi
   line_price?: number;
   image?: string;
   sku?: string;
@@ -129,48 +129,52 @@ export default function CheckoutPage() {
             Riepilogo ordine
           </h1>
           <div className="space-y-3">
-            {items.map((item, idx) => (
-              <div
-                key={`${item.id}-${idx}`}
-                className="flex gap-3 rounded-2xl bg-slate-900/60 border border-white/5 p-3"
-              >
-                {item.image && (
-                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-800/80">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-slate-50">
-                      {item.title}
-                    </div>
-                    <div className="text-sm text-slate-100">
-                      {((item.price || 0) / 100).toFixed(2)} {currency}
-                    </div>
-                  </div>
-                  {item.variant_title && (
-                    <div className="text-xs text-slate-400">
-                      {item.variant_title}
+            {items.map((item, idx) => {
+              // 👇 calcolo totale riga SENZA usare ?? e || insieme
+              const lineTotalCents =
+                typeof item.line_price === "number"
+                  ? item.line_price
+                  : (item.price || 0) * (item.quantity || 0);
+
+              return (
+                <div
+                  key={`${item.id}-${idx}`}
+                  className="flex gap-3 rounded-2xl bg-slate-900/60 border border-white/5 p-3"
+                >
+                  {item.image && (
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-800/80">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                      />
                     </div>
                   )}
-                  <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
-                    <span>Q.tà: {item.quantity}</span>
-                    <span>
-                      Totale riga:{" "}
-                      {(
-                        (item.line_price ?? item.price * item.quantity || 0) /
-                        100
-                      ).toFixed(2)}{" "}
-                      {currency}
-                    </span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-slate-50">
+                        {item.title}
+                      </div>
+                      <div className="text-sm text-slate-100">
+                        {((item.price || 0) / 100).toFixed(2)} {currency}
+                      </div>
+                    </div>
+                    {item.variant_title && (
+                      <div className="text-xs text-slate-400">
+                        {item.variant_title}
+                      </div>
+                    )}
+                    <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
+                      <span>Q.tà: {item.quantity}</span>
+                      <span>
+                        Totale riga:{" "}
+                        {(lineTotalCents / 100).toFixed(2)} {currency}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
