@@ -1,3 +1,4 @@
+// src/app/checkout/stripe/PaymentBox.tsx
 "use client"
 
 import { PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js"
@@ -11,7 +12,7 @@ export default function PaymentBox({ sessionId }: { sessionId: string }) {
 
   async function handlePay() {
     if (!stripe || !elements) {
-      console.log("Stripe non pronto")
+      console.log("[PaymentBox] Stripe non pronto")
       return
     }
 
@@ -31,12 +32,13 @@ export default function PaymentBox({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="w-full max-w-xl bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4">
+    <div className="w-full max-w-xl bg-slate-900 p-4 rounded-2xl border border-slate-700 space-y-4">
       <PaymentElement />
       <button
+        type="button"
         onClick={handlePay}
         disabled={loading}
-        className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold"
+        className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold transition"
       >
         {loading ? "Elaborazione…" : "Paga ora"}
       </button>
