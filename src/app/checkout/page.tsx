@@ -23,6 +23,8 @@ function CheckoutPageInner() {
   const [subtotal, setSubtotal] = useState(0)
   const [shippingAmount, setShippingAmount] = useState(0)
   const [total, setTotal] = useState(0)
+  const [discountTotal, setDiscountTotal] = useState(0)
+  const [couponCodes, setCouponCodes] = useState<string[]>([])
 
   const [clientSecret, setClientSecret] = useState<string | null>(null)
 
@@ -38,7 +40,7 @@ function CheckoutPageInner() {
         setLoading(true)
         setError(null)
 
-        // 1) Recuperiamo il carrello
+        // 1) Carrello
         const res = await fetch(`/api/cart-session?sessionId=${sessionId}`)
         const data = await res.json()
 
@@ -50,6 +52,7 @@ function CheckoutPageInner() {
 
         const items = data.items || []
         const currency = data.currency || "EUR"
+
         const subtotalCents = Number(data.subtotalCents || 0)
         const shippingCents = Number(data.shippingCents || 0)
         const totalCents =
@@ -57,13 +60,20 @@ function CheckoutPageInner() {
             ? Number(data.totalCents)
             : subtotalCents + shippingCents
 
+        const discountTotalCents = Number(data.discountTotalCents || 0)
+        const codes: string[] = Array.isArray(data.couponCodes)
+          ? data.couponCodes
+          : []
+
         setItems(items)
         setCurrency(currency)
         setSubtotal(subtotalCents / 100)
         setShippingAmount(shippingCents / 100)
         setTotal(totalCents / 100)
+        setDiscountTotal(discountTotalCents / 100)
+        setCouponCodes(codes)
 
-        // 2) Creiamo PaymentIntent
+        // 2) PaymentIntent
         const piRes = await fetch("/api/payment-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -74,14 +84,14 @@ function CheckoutPageInner() {
         if (!piRes.ok || !piData.clientSecret) {
           console.error("[Checkout] errore PaymentIntent:", piData)
           setError(
-            piData.error || "Errore nel creare il pagamento. Riprova tra poco.",
+            piData.error ||
+              "Errore nel creare il pagamento. Riprova tra poco.",
           )
           setLoading(false)
           return
         }
 
         setClientSecret(piData.clientSecret)
-        setError(null)
       } catch (err) {
         console.error("[Checkout] errore:", err)
         setError("Errore nel caricamento del checkout.")
@@ -126,12 +136,12 @@ function CheckoutPageInner() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-5xl grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)]">
-        {/* COLONNA SINISTRA: riepilogo */}
+        {/* COLONNA SINISTRA: per ora solo titolo / info */}
         <section className="bg-slate-900/70 border border-slate-700/60 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-xl">
           <header className="mb-6">
             <h1 className="text-2xl font-semibold">Checkout</h1>
             <p className="text-sm text-slate-300 mt-1">
-              Rivedi il tuo ordine e inserisci i dati di pagamento.
+              Completa i dati e paga in modo sicuro.
             </p>
           </header>
 
@@ -141,26 +151,85 @@ function CheckoutPageInner() {
             </h2>
 
             {items.map((item, idx) => {
-              const linePrice = Number(item.linePriceCents || 0) / 100
-              const unitPrice = Number(item.priceCents || 0) / 100
+              const qty = Number(item.quantity || 0)
+              const unitOriginal =
+                Number(item.originalPriceCents ?? item.priceCents ?? 0) / 100
+              const unitDiscounted =
+                Number(item.discountedPriceCents ?? item.priceCents ?? 0) / 100
+              const linePrice =
+                Number(item.linePriceCents ?? 0) / 100
+              const lineDiscount =
+                Number(item.lineDiscountCents ?? 0) / 100
+
+              const hasDiscount =
+                lineDiscount > 0 || unitDiscounted < unitOriginal
 
               return (
                 <div
                   key={idx}
-                  className="flex justify-between p-3 bg-slate-900/40 border border-slate-800 rounded-2xl"
+                  className="flex gap-3 p-3 bg-slate-900/40 border border-slate-800 rounded-2xl"
                 >
-                  <div>
-                    <div className="text-sm font-medium">{item.title}</div>
-                    <div className="text-xs text-slate-400">
-                      {item.variantTitle}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {item.quantity}× {unitPrice.toFixed(2)} {currency}
-                    </div>
+                  {/* immagine */}
+                  <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-slate-900 border border-slate-800">
+                    {item.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
+                        No image
+                      </div>
+                    )}
                   </div>
 
-                  <div className="text-sm font-semibold">
-                    {linePrice.toFixed(2)} {currency}
+                  <div className="flex flex-1 flex-col justify-between">
+                    <div>
+                      <div className="text-sm font-medium">
+                        {item.title}
+                      </div>
+                      {item.variantTitle && (
+                        <div className="text-xs text-slate-400">
+                          {item.variantTitle}
+                        </div>
+                      )}
+
+                      {/* Riga prezzi tipo Shopify */}
+                      <div className="mt-1 text-xs text-slate-400">
+                        {qty}×{" "}
+                        {hasDiscount ? (
+                          <>
+                            <span className="line-through mr-1">
+                              {unitOriginal.toFixed(2)} {currency}
+                            </span>
+                            <span className="font-semibold text-slate-50">
+                              {unitDiscounted.toFixed(2)} {currency}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {unitOriginal.toFixed(2)} {currency}
+                          </>
+                        )}
+                      </div>
+
+                      {hasDiscount && (
+                        <div className="mt-1 text-[11px] text-emerald-400 flex items-center gap-1">
+                          <span className="border border-emerald-500/60 rounded-full px-2 py-[1px] text-[10px] uppercase tracking-wide">
+                            SCONTO
+                          </span>
+                          <span>
+                            -{lineDiscount.toFixed(2)} {currency} sulla riga
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-sm font-semibold self-end mt-2">
+                      {linePrice.toFixed(2)} {currency}
+                    </div>
                   </div>
                 </div>
               )
@@ -177,7 +246,9 @@ function CheckoutPageInner() {
 
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-300">Subtotale</span>
+                <span className="text-slate-300">
+                  Subtotale · {itemsCount} articoli
+                </span>
                 <span>
                   {subtotal.toFixed(2)} {currency}
                 </span>
@@ -188,7 +259,7 @@ function CheckoutPageInner() {
                 <span>
                   {shippingAmount > 0
                     ? `${shippingAmount.toFixed(2)} ${currency}`
-                    : "Calcolata dopo"}
+                    : "Calcolata in base all'indirizzo"}
                 </span>
               </div>
 
@@ -198,15 +269,27 @@ function CheckoutPageInner() {
                   {total.toFixed(2)} {currency}
                 </span>
               </div>
+
+              {discountTotal > 0 && (
+                <div className="mt-2 flex items-center justify-between text-xs text-emerald-400">
+                  <div className="flex items-center gap-1">
+                    <span>🎟 RISPARMI TOTALI</span>
+                    {couponCodes.length > 0 && (
+                      <span className="ml-1 text-[10px] uppercase tracking-wide text-emerald-300">
+                        {couponCodes.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-semibold">
+                    {discountTotal.toFixed(2)} {currency}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Stripe Payment Element */}
           {clientSecret && (
-            <Elements
-              stripe={stripePromise}
-              options={{ clientSecret }}
-            >
+            <Elements stripe={stripePromise} options={{ clientSecret }}>
               <PaymentBox sessionId={sessionId!} />
             </Elements>
           )}
