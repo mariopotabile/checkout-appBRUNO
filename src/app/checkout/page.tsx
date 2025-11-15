@@ -521,7 +521,29 @@ function PaymentBox({
         colorBackground: "#ffffff",
         colorText: "#111111",
         colorDanger: "#df1c41",
-        borderRadius: "8px",
+        borderRadius: "10px",
+        // bordo degli input Stripe più visibile
+        colorBorder: "#111111",
+      },
+      // leggero tuning degli input Stripe
+      rules: {
+        ".Input": {
+          borderColor: "#111111",
+          boxShadow: "0 0 0 1px #111111",
+          padding: "10px 12px",
+        },
+        ".Label": {
+          fontSize: "12px",
+          fontWeight: "500",
+        },
+      },
+    },
+    // niente billing fields interni Stripe: li gestiamo noi
+    fields: {
+      billingDetails: {
+        name: "never",
+        email: "never",
+        address: "never",
       },
     },
   } as StripeElementsOptions
@@ -619,22 +641,34 @@ function PaymentBoxInner({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-md p-4 space-y-3">
-        {/* Element Stripe con numero carta, scadenza, CVC, ecc. */}
-        <PaymentElement />
+      {/* BOX PRINCIPALE PAGAMENTO CON CARTA */}
+      <div className="rounded-xl border border-gray-300 bg-white p-4 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Pagamento con carta
+          </h3>
+          <span className="text-xs text-gray-500">
+            Tutte le transazioni sono sicure.
+          </span>
+        </div>
 
-        {/* Nome completo intestatario carta */}
+        {/* 👇 Nome completo PRIMA del riquadro numero carta */}
         <div className="space-y-1">
           <label className="block text-xs font-medium text-gray-700">
             Nome completo sull&apos;intestatario della carta
           </label>
           <input
             type="text"
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            className="w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
             placeholder="Es. Mario Rossi"
             value={cardholderName}
             onChange={e => setCardholderName(e.target.value)}
           />
+        </div>
+
+        {/* Riquadro numeri carta con bordo ben visibile */}
+        <div className="rounded-lg border-2 border-black/90 bg-white px-3 py-3">
+          <PaymentElement />
         </div>
       </div>
 
@@ -654,8 +688,8 @@ function PaymentBoxInner({
       </button>
 
       <p className="text-[11px] text-gray-500">
-        Tutte le transazioni sono sicure e crittografate. Il pagamento è
-        gestito da Stripe.
+        I pagamenti sono elaborati in modo sicuro da Stripe. I dati della
+        carta non passano mai sui nostri server.
       </p>
     </div>
   )
