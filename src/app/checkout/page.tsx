@@ -39,7 +39,11 @@ function CheckoutPageInner() {
   const [items, setItems] = useState<any[]>([])
   const [currency, setCurrency] = useState("EUR")
 
-  const [subtotal, setSubtotal] = useState(0) // €
+  const [subtotal, setSubtotal] = useState(0) // € dopo sconto
+  const [originalSubtotal, setOriginalSubtotal] = useState(0) // € pieno
+  const [discountAmount, setDiscountAmount] = useState(0) // €
+  const [discountCode, setDiscountCode] = useState<string | null>(null)
+
   const [shippingAmount, setShippingAmount] = useState(0) // €
   const [total, setTotal] = useState(0) // €
 
@@ -111,13 +115,57 @@ function CheckoutPageInner() {
 
         const items = data.items || []
         const currency = data.currency || "EUR"
-        const subtotalCents = Number(data.subtotalCents || 0)
+
+        // subtotalCents = totale effettivo dopo sconti
+        const subtotalCents =
+          Number(data.subtotalCents) ||
+          Number(data.totals?.subtotal) ||
+          0
+
+        // subtotale pieno = somma(priceCents * qty)
+        const originalSubtotalCents = items.reduce(
+          (sum: number, it: any) =>
+            sum +
+            Number(it.priceCents || 0) *
+              Number(it.quantity || 1),
+          0,
+        )
+
+        const discountCents = Math.max(
+          originalSubtotalCents - subtotalCents,
+          0,
+        )
+
+        // recupero codice sconto da rawCart se presente
+        let code: string | null = null
+        const rawCart = data.rawCart || {}
+        if (
+          Array.isArray(rawCart.discount_codes) &&
+          rawCart.discount_codes.length > 0
+        ) {
+          const dc = rawCart.discount_codes[0]
+          code = dc.title || dc.code || null
+        } else if (
+          Array.isArray(
+            rawCart.cart_level_discount_applications,
+          ) &&
+          rawCart.cart_level_discount_applications.length > 0
+        ) {
+          const dc = rawCart.cart_level_discount_applications[0]
+          code = dc.title || null
+        }
 
         setItems(items)
         setCurrency(currency)
 
         const sub = subtotalCents / 100
+        const originalSub = originalSubtotalCents / 100
+        const discount = discountCents / 100
+
         setSubtotal(sub)
+        setOriginalSubtotal(originalSub)
+        setDiscountAmount(discount)
+        setDiscountCode(code)
 
         // inizialmente nessuna spedizione applicata
         setShippingAmount(0)
@@ -376,12 +424,25 @@ function CheckoutPageInner() {
 
             {/* ARTICOLI */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold uppercase text-gray-800 flex items-center justify-between">
-                <span>Articoli nel carrello</span>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase text-gray-800">
+                  Articoli nel carrello
+                </h2>
                 <span className="text-xs text-gray-500">
                   ({itemsCount})
                 </span>
-              </h2>
+              </div>
+
+              {discountCode && discountAmount > 0 && (
+                <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs mb-1 border border-emerald-200">
+                  <span className="font-semibold">
+                    Codice sconto: {discountCode}
+                  </span>
+                  <span>
+                    −{discountAmount.toFixed(2)} {currency} sul totale
+                  </span>
+                </div>
+              )}
 
               {items.map((item, idx) => {
                 const qty = Number(item.quantity || 1)
@@ -471,6 +532,32 @@ function CheckoutPageInner() {
               </h2>
 
               <div className="space-y-3 text-sm">
+                {/* Subtotale pieno */}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    Subtotale prodotti
+                  </span>
+                  <span className="text-gray-900">
+                    {originalSubtotal.toFixed(2)} {currency}
+                  </span>
+                </div>
+
+                {/* Sconto */}
+                {discountAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">
+                      Sconto
+                      {discountCode
+                        ? ` (${discountCode})`
+                        : ""}
+                    </span>
+                    <span className="text-red-600">
+                      −{discountAmount.toFixed(2)} {currency}
+                    </span>
+                  </div>
+                )}
+
+                {/* Subtotale dopo sconto */}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotale</span>
                   <span className="text-gray-900">
@@ -478,6 +565,7 @@ function CheckoutPageInner() {
                   </span>
                 </div>
 
+                {/* Spedizione */}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Spedizione</span>
                   {shippingConfirmed ? (
@@ -502,12 +590,14 @@ function CheckoutPageInner() {
                   </div>
                 )}
 
+                {/* Totale finale */}
                 <div className="border-t border-gray-200 pt-3 flex justify-between text-base">
                   <span className="font-semibold text-gray-900">
                     Totale
                   </span>
                   <span className="font-semibold text-lg text-gray-900">
-                    {total.toFixed(2)} {currency}
+                    {(subtotal + shippingAmount).toFixed(2)}{" "}
+                    {currency}
                   </span>
                 </div>
               </div>
@@ -567,15 +657,25 @@ function PaymentBox({
         colorDanger: "#df1c41",
         borderRadius: "10px",
       },
-      // bordi più visibili dentro al Payment Element
+      // Bordi scuri e niente effetto "ambrato" nel Payment Element
       rules: {
         ".Input": {
+          backgroundColor: "#ffffff",
           borderColor: "#000000",
-          boxShadow: "0 0 0 1px #000000",
+          boxShadow: "none",
           padding: "10px 12px",
         },
         ".Input:focus": {
-          boxShadow: "0 0 0 2px #000000",
+          backgroundColor: "#ffffff",
+          boxShadow: "0 0 0 1px #000000",
+        },
+        ".Fieldset": {
+          borderColor: "#000000",
+          boxShadow: "none",
+        },
+        ".Tab, .Block": {
+          backgroundColor: "#f9fafb",
+          borderColor: "#e5e7eb",
         },
         ".Label": {
           color: "#111111",
