@@ -72,10 +72,10 @@ function CheckoutPageInner() {
   const [rawCart, setRawCart] = useState<any>(null)
   const [currency, setCurrency] = useState("EUR")
 
-  // Valori REALI DA SHOPIFY
-  const [subtotalProducts, setSubtotalProducts] = useState(0)
-  const [discount, setDiscount] = useState(0)
-  const [subtotalFinal, setSubtotalFinal] = useState(0)
+  // Valori calcolati
+  const [subtotalProducts, setSubtotalProducts] = useState(0) // somma original_line_price
+  const [discount, setDiscount] = useState(0)                  // differenza tra original e final
+  const [subtotalFinal, setSubtotalFinal] = useState(0)        // somma final_line_price
 
   const [shippingCents, setShippingCents] = useState(0)
   const [totalCents, setTotalCents] = useState(0)
@@ -96,7 +96,7 @@ function CheckoutPageInner() {
   })
 
   /* -------------------------------------------------------------------------- */
-  /*                       CARICA SESSIONE (RAW CART)                          */
+  /*                       CARICA SESSIONE (RAW CART)                           */
   /* -------------------------------------------------------------------------- */
 
   useEffect(() => {
@@ -120,27 +120,57 @@ function CheckoutPageInner() {
         }
 
         const raw = data.rawCart || {}
+        const rawItems: any[] = Array.isArray(raw.items) ? raw.items : []
 
         setItems(data.items || [])
         setRawCart(raw)
         setCurrency((data.currency || "EUR").toUpperCase())
 
-        const original = Number(raw.original_total_price ?? 0)
-        const final = Number(raw.total_price ?? 0)
-        const discountValue =
-          typeof raw.total_discount === "number"
-            ? Number(raw.total_discount)
-            : Math.max(0, original - final)
+        // 🔥 Calcolo TUTTO dai singoli item, NON dai totaloni
+        let original = 0
+        let final = 0
 
-        // Se Shopify non ha ancora sconto, fallback sul subtotale finale
-        const safeOriginal = original || final + discountValue
+        if (rawItems.length > 0) {
+          for (const r of rawItems) {
+            const qty = Number(r.quantity ?? 1)
 
-        setSubtotalProducts(safeOriginal)
-        setSubtotalFinal(final || safeOriginal - discountValue)
+            const origLine =
+              typeof r.original_line_price === "number"
+                ? r.original_line_price
+                : typeof r.line_price === "number"
+                ? r.line_price
+                : 0
+
+            const finalLine =
+              typeof r.final_line_price === "number"
+                ? r.final_line_price
+                : typeof r.line_price === "number"
+                ? r.line_price
+                : 0
+
+            original += origLine
+            final += finalLine
+          }
+        } else {
+          // Fallback se per qualche motivo rawCart.items non c'è:
+          for (const it of data.items || []) {
+            const qty = Number(it.quantity ?? 1)
+            const origLine = (it.priceCents || 0) * qty
+            const finLine =
+              typeof it.linePriceCents === "number"
+                ? it.linePriceCents
+                : origLine
+            original += origLine
+            final += finLine
+          }
+        }
+
+        const discountValue = Math.max(0, original - final)
+
+        setSubtotalProducts(original)
+        setSubtotalFinal(final)
         setDiscount(discountValue)
-
-        // Di base il totale è il totale Shopify (senza shipping esterna)
-        setTotalCents(final || safeOriginal - discountValue)
+        setTotalCents(final) // il totale di base è il finale, la spedizione si aggiunge a parte
       } catch (e) {
         console.error(e)
         setError("Errore nel caricamento del carrello")
@@ -233,7 +263,6 @@ function CheckoutPageInner() {
       </main>
     )
 
-  /* Formattazioni */
   const f = (n: number) => (n / 100).toFixed(2)
 
   /* -------------------------------------------------------------------------- */
