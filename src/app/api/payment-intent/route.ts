@@ -9,7 +9,7 @@ const COLLECTION = "cartSessions"
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null)
-    const sessionId = (body?.sessionId as string | undefined)?.trim()
+    const sessionId = body?.sessionId as string | undefined
 
     if (!sessionId) {
       return NextResponse.json(
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const data = snap.data() || {}
+    const data: any = snap.data() || {}
 
     // Se abbiamo già un PaymentIntent salvato, riusa quello
     if (data.paymentIntentClientSecret) {
@@ -40,26 +40,46 @@ export async function POST(req: NextRequest) {
 
     const currency = (data.currency || "EUR").toString().toLowerCase()
 
-    // Subtotale (già salvato nella sessione dal backend che legge Shopify)
+    // -------------------------------
+    // 2) Calcolo importo in modo robusto
+    // -------------------------------
+
     const subtotalCents =
       typeof data.subtotalCents === "number"
         ? data.subtotalCents
         : typeof data.totals?.subtotal === "number"
         ? data.totals.subtotal
-        : typeof data.rawCart?.items_subtotal_price === "number"
-        ? data.rawCart.items_subtotal_price
         : 0
 
     const shippingCents =
       typeof data.shippingCents === "number" ? data.shippingCents : 0
 
-    // Totale: preferisci quello salvato (già scontato) o fallback a sub + shipping
-    const totalCents =
-      typeof data.totalCents === "number"
-        ? data.totalCents
-        : subtotalCents + shippingCents
+    const totalFromSession =
+      typeof data.totalCents === "number" ? data.totalCents : 0
 
-    if (!totalCents || totalCents < 50) {
+    const rawCart = data.rawCart || {}
+    const totalFromRawCart =
+      typeof rawCart.total_price === "number" ? rawCart.total_price : 0
+
+    let amountCents = 0
+
+    if (totalFromSession > 0) {
+      amountCents = totalFromSession
+    } else if (totalFromRawCart > 0) {
+      amountCents = totalFromRawCart
+    } else {
+      amountCents = subtotalCents + shippingCents
+    }
+
+    if (!amountCents || amountCents < 50) {
+      console.warn("[/api/payment-intent] amountCents non valido:", {
+        subtotalCents,
+        shippingCents,
+        totalFromSession,
+        totalFromRawCart,
+        amountCents,
+      })
+
       return NextResponse.json(
         {
           error:
@@ -69,27 +89,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2) Config + scelta account Stripe attivo
+    // -------------------------------
+    // 3) Prende la secret di Stripe + merchantSite da Firebase config
+    // -------------------------------
     const cfg = await getConfig()
 
     const stripeAccounts = Array.isArray(cfg.stripeAccounts)
-      ? cfg.stripeAccounts
+      ? cfg.stripeAccounts.filter((a: any) => a.secretKey)
       : []
 
-    const activeAccounts = stripeAccounts.filter(
-      (acc: any) => acc.secretKey && acc.active !== false,
-    )
-
-    const selectedStripe: any =
-      activeAccounts[0] ||
-      stripeAccounts.find((acc: any) => acc.secretKey) ||
-      null
+    const firstStripe = stripeAccounts[0] || null
 
     const secretKey =
-      selectedStripe?.secretKey || process.env.STRIPE_SECRET_KEY || ""
+      firstStripe?.secretKey || process.env.STRIPE_SECRET_KEY || ""
 
     if (!secretKey) {
-      console.error("[/api/payment-intent] Nessuna Stripe secret key configurata")
+      console.error(
+        "[/api/payment-intent] Nessuna Stripe secret key configurata",
+      )
       return NextResponse.json(
         { error: "Configurazione Stripe mancante" },
         { status: 500 },
@@ -97,76 +114,42 @@ export async function POST(req: NextRequest) {
     }
 
     const merchantSite: string =
-      selectedStripe?.merchantSite ||
+      (firstStripe as any)?.merchantSite ||
       cfg.checkoutDomain ||
-      "https://checkout-app"
+      "https://notforresale.it"
 
+    const descriptorRaw = (firstStripe as any)?.label || "NFR"
+    const statementDescriptorSuffix =
+      descriptorRaw.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 22) || "NFR"
+
+    // ✅ niente apiVersion esplicita → usa quella di account/dashboard
     const stripe = new Stripe(secretKey)
 
-    // 3) Dati cliente (se salvati nella sessione)
-    const customer = (data.customer || {}) as {
-      firstName?: string
-      lastName?: string
-      email?: string
-      phone?: string
-      address1?: string
-      address2?: string
-      city?: string
-      province?: string
-      zip?: string
-      country?: string
-    }
-
-    const fullName = [customer.firstName, customer.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim()
-
-    // Costruisci shipping solo se hai abbastanza dati
-    const shippingInfo =
-      fullName && customer.address1 && customer.city && customer.zip
-        ? {
-            name: fullName,
-            phone: customer.phone || undefined,
-            address: {
-              line1: customer.address1,
-              ...(customer.address2 ? { line2: customer.address2 } : {}),
-              city: customer.city,
-              postal_code: customer.zip,
-              ...(customer.province ? { state: customer.province } : {}),
-              country: (customer.country || "IT").toUpperCase(),
-            },
-          }
-        : undefined
-
-    // 4) Crea PaymentIntent SOLO carta, con metadata + shipping
-    const params: Stripe.PaymentIntentCreateParams = {
-      amount: totalCents,
+    // -------------------------------
+    // 4) Crea PaymentIntent SOLO CARTA, con metadata utili
+    // -------------------------------
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
       currency,
       payment_method_types: ["card"],
-      capture_method: "automatic_async",
       metadata: {
         sessionId,
         merchant_site: merchantSite,
+        first_item_title:
+          Array.isArray(data.items) && data.items[0]?.title
+            ? String(data.items[0].title)
+            : "",
       },
-    }
+      statement_descriptor_suffix: statementDescriptorSuffix,
+    })
 
-    if (customer.email) {
-      params.metadata!.customer_email = customer.email
-    }
-    if (fullName) {
-      params.metadata!.customer_name = fullName
-    }
-    if (shippingInfo) {
-      params.shipping = shippingInfo
-    }
-
-    const paymentIntent = await stripe.paymentIntents.create(params)
-
+    // -------------------------------
     // 5) Salva info del PaymentIntent dentro alla sessione carrello
+    // -------------------------------
     await db.collection(COLLECTION).doc(sessionId).update({
       paymentIntentId: paymentIntent.id,
       paymentIntentClientSecret: paymentIntent.client_secret,
+      stripeAccountLabel: firstStripe?.label || null,
     })
 
     return NextResponse.json(
@@ -178,7 +161,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          error?.message || "Errore interno nella creazione del pagamento",
+          error?.message ||
+          "Errore interno nella creazione del pagamento",
       },
       { status: 500 },
     )
