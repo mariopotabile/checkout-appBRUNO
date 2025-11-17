@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
   ChangeEvent,
+  FormEvent,
 } from "react"
 import { useSearchParams } from "next/navigation"
 import { loadStripe } from "@stripe/stripe-js"
@@ -78,6 +79,16 @@ function CheckoutPageInner() {
   const [discountCents, setDiscountCents] = useState(0)
   const [originalSubtotalCents, setOriginalSubtotalCents] = useState(0)
   const [discountCode, setDiscountCode] = useState<string | null>(null)
+
+  // 🔹 sconto extra inserito in questo checkout (codice Shopify)
+  const [extraDiscountCode, setExtraDiscountCode] = useState("")
+  const [extraDiscountPercent, setExtraDiscountPercent] =
+    useState<number | null>(null)
+  const [extraDiscountCents, setExtraDiscountCents] = useState(0)
+  const [discountApplyLoading, setDiscountApplyLoading] = useState(false)
+  const [discountApplyError, setDiscountApplyError] = useState<string | null>(
+    null,
+  )
 
   const [clientSecret, setClientSecret] = useState<string | null>(null)
 
@@ -181,23 +192,28 @@ function CheckoutPageInner() {
       customer.province.trim() &&
       customer.country.trim()
 
+    const effectiveSubtotal = Math.max(0, subtotalCents - extraDiscountCents)
+
     if (requiredOk && shippingCents === 0) {
       const ship = FIXED_SHIPPING_CENTS
       setShippingCents(ship)
-      setTotalCents(subtotalCents + ship)
+      setTotalCents(effectiveSubtotal + ship)
     } else if (!requiredOk && shippingCents !== 0) {
       setShippingCents(0)
-      setTotalCents(subtotalCents)
+      setTotalCents(effectiveSubtotal)
     }
-  }, [customer, shippingCents, subtotalCents])
+  }, [customer, shippingCents, subtotalCents, extraDiscountCents])
 
-  // se cambia il subtotale e la spedizione esiste → aggiorna totale
+  // se cambia il subtotale / sconto extra / spedizione → aggiorna totale
   useEffect(() => {
-    setTotalCents(subtotalCents + shippingCents)
-  }, [subtotalCents, shippingCents])
+    const effectiveSubtotal = Math.max(0, subtotalCents - extraDiscountCents)
+    setTotalCents(effectiveSubtotal + shippingCents)
+  }, [subtotalCents, shippingCents, extraDiscountCents])
 
   /* ---------------------------------------------
      CREA / AGGIORNA PAYMENT INTENT STRIPE
+     (NOTA: /api/payment-intent per ora ignora extraDiscountCents;
+      va adattata per usare anche questo valore nell'importo)
   ---------------------------------------------- */
   useEffect(() => {
     if (!sessionId) return
@@ -213,6 +229,7 @@ function CheckoutPageInner() {
             sessionId,
             shippingCents,
             customer,
+            extraDiscountCents, // 🔹 pronto per essere usato lato server
           }),
         })
         const data = await res.json()
@@ -225,7 +242,65 @@ function CheckoutPageInner() {
         console.error("Errore payment-intent:", err)
       }
     })()
-  }, [sessionId, subtotalCents, shippingCents, customer])
+  }, [sessionId, subtotalCents, shippingCents, customer, extraDiscountCents])
+
+  /* ---------------------------------------------
+     GESTIONE CODICE SCONTO EXTRA (Shopify)
+  ---------------------------------------------- */
+  async function handleApplyExtraDiscount(e: FormEvent) {
+    e.preventDefault()
+    const code = extraDiscountCode.trim()
+    if (!code) return
+
+    setDiscountApplyLoading(true)
+    setDiscountApplyError(null)
+
+    try {
+      const res = await fetch("/api/discount/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.ok) {
+        setExtraDiscountPercent(null)
+        setExtraDiscountCents(0)
+        setDiscountApplyError(
+          data?.error || "Codice sconto non valido o non applicabile.",
+        )
+        return
+      }
+
+      const percent = Number(data.percent || 0)
+      if (!percent || percent <= 0) {
+        setExtraDiscountPercent(null)
+        setExtraDiscountCents(0)
+        setDiscountApplyError("Codice sconto non valido.")
+        return
+      }
+
+      // sconto percentuale applicato sul subtotale Shopify (già scontato)
+      const discountValue = Math.round((subtotalCents * percent) / 100)
+
+      setExtraDiscountPercent(percent)
+      setExtraDiscountCents(discountValue)
+      setDiscountApplyError(null)
+    } catch (err: any) {
+      console.error("Errore applicazione codice sconto:", err)
+      setExtraDiscountPercent(null)
+      setExtraDiscountCents(0)
+      setDiscountApplyError(
+        err?.message || "Errore durante la verifica del codice.",
+      )
+    } finally {
+      setDiscountApplyLoading(false)
+    }
+  }
+
+  /* ---------------------------------------------
+     DERIVATI / FORMATTING
+  ---------------------------------------------- */
 
   const itemsCount = useMemo(
     () => items.reduce((acc, it) => acc + Number(it.quantity || 0), 0),
@@ -233,10 +308,23 @@ function CheckoutPageInner() {
   )
 
   const subtotalProductsFormatted = (originalSubtotalCents / 100).toFixed(2)
-  const subtotalAfterDiscountFormatted = (subtotalCents / 100).toFixed(2)
   const discountFormatted = (discountCents / 100).toFixed(2)
+  const extraDiscountFormatted = (extraDiscountCents / 100).toFixed(2)
+
+  const effectiveSubtotalCents = Math.max(
+    0,
+    subtotalCents - extraDiscountCents,
+  )
+  const subtotalAfterDiscountFormatted = (
+    effectiveSubtotalCents / 100
+  ).toFixed(2)
+
   const shippingFormatted = (shippingCents / 100).toFixed(2)
   const totalFormatted = (totalCents / 100).toFixed(2)
+
+  /* ---------------------------------------------
+     UI LOADING / ERROR
+  ---------------------------------------------- */
 
   if (loading) {
     return (
@@ -262,6 +350,10 @@ function CheckoutPageInner() {
       </main>
     )
   }
+
+  /* ---------------------------------------------
+     RENDER PRINCIPALE
+  ---------------------------------------------- */
 
   return (
     <main className="min-h-screen bg-white text-black px-4 py-6 md:px-6 lg:px-10">
@@ -489,6 +581,20 @@ function CheckoutPageInner() {
                 </div>
               )}
 
+              {extraDiscountCents > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-600">
+                    Sconto extra codice
+                    {extraDiscountCode
+                      ? ` (${extraDiscountCode.toUpperCase()})`
+                      : ""}
+                  </dt>
+                  <dd className="text-red-600">
+                    −{extraDiscountFormatted} {currency}
+                  </dd>
+                </div>
+              )}
+
               <div className="flex justify-between">
                 <dt className="text-gray-600">Subtotale</dt>
                 <dd>
@@ -505,6 +611,41 @@ function CheckoutPageInner() {
                 </dd>
               </div>
             </dl>
+
+            {/* Campo codice sconto extra */}
+            <form
+              onSubmit={handleApplyExtraDiscount}
+              className="mt-4 flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Codice sconto"
+                value={extraDiscountCode}
+                onChange={e => setExtraDiscountCode(e.target.value)}
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+              />
+              <button
+                type="submit"
+                disabled={discountApplyLoading}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {discountApplyLoading ? "Verifica…" : "Applica"}
+              </button>
+            </form>
+
+            {discountApplyError && (
+              <p className="mt-1 text-xs text-red-600">
+                {discountApplyError}
+              </p>
+            )}
+
+            {extraDiscountPercent && extraDiscountCents > 0 && (
+              <p className="mt-1 text-[11px] text-emerald-600">
+                Codice applicato:{" "}
+                {extraDiscountCode.toUpperCase()} (−{extraDiscountPercent}%: −
+                {extraDiscountFormatted} {currency})
+              </p>
+            )}
 
             {shippingCents > 0 && (
               <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
