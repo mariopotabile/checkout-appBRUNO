@@ -99,7 +99,6 @@ function CheckoutInner({
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [shippingError, setShippingError] = useState<string | null>(null)
 
-  // ✅ AUTOCOMPLETE GOOGLE PLACES
   const addressInputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
 
@@ -127,14 +126,12 @@ function CheckoutInner({
 
   const totalToPayCents = subtotalCents - discountCents + calculatedShippingCents
 
-  // ✅ INIZIALIZZA GOOGLE PLACES AUTOCOMPLETE
   useEffect(() => {
     if (!addressInputRef.current) return
 
-    // Carica Google Maps API
     if (!window.google) {
       const script = document.createElement("script")
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=it`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=it&loading=async`
       script.async = true
       script.defer = true
       script.onload = initAutocomplete
@@ -150,7 +147,7 @@ function CheckoutInner({
         addressInputRef.current,
         {
           types: ["address"],
-          componentRestrictions: { country: ["it", "fr", "de", "es", "at", "be", "nl"] }, // Europa
+          componentRestrictions: { country: ["it", "fr", "de", "es", "at", "be", "nl"] },
           fields: ["address_components", "formatted_address"],
         }
       )
@@ -172,7 +169,6 @@ function CheckoutInner({
     let postalCode = ""
     let country = ""
 
-    // Estrai componenti dall'indirizzo
     place.address_components.forEach((component) => {
       const types = component.types
 
@@ -196,10 +192,8 @@ function CheckoutInner({
       }
     })
 
-    // Componi indirizzo
     const fullAddress = streetNumber ? `${street} ${streetNumber}` : street
 
-    // Aggiorna form
     setCustomer((prev) => ({
       ...prev,
       address1: fullAddress,
@@ -235,6 +229,7 @@ function CheckoutInner({
     )
   }
 
+  // ✅ SPEDIZIONE FLAT 5,90€
   useEffect(() => {
     async function calculateShipping() {
       if (!isFormValid()) {
@@ -249,33 +244,26 @@ function CheckoutInner({
       setShippingError(null)
 
       try {
-        const shippingRes = await fetch("/api/calculate-shipping", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            destination: {
-              city: customer.city,
-              province: customer.province,
-              postalCode: customer.postalCode,
-              countryCode: customer.countryCode || "IT",
-            },
-          }),
+        // ✅ SPEDIZIONE FLAT: 5,90€ = 590 centesimi
+        const flatShippingCents = 590
+
+        setCalculatedShippingCents(flatShippingCents)
+
+        console.log("[checkout] ✅ Spedizione flat applicata: €5.90")
+
+        // Calcola totale: subtotale - sconto + spedizione
+        const currentDiscountCents = subtotalCents - totalFromSession
+        const finalDiscountCents = currentDiscountCents > 0 ? currentDiscountCents : 0
+        const newTotalCents = subtotalCents - finalDiscountCents + flatShippingCents
+
+        console.log("[checkout] Calcolo totale:", {
+          subtotalCents,
+          discountCents: finalDiscountCents,
+          shippingCents: flatShippingCents,
+          totalCents: newTotalCents,
         })
 
-        const shippingData = await shippingRes.json()
-
-        if (!shippingRes.ok) {
-          throw new Error(shippingData.error || "Errore calcolo spedizione")
-        }
-
-        const newShippingCents = shippingData.shippingCents || 0
-        setCalculatedShippingCents(newShippingCents)
-
-        const currentDiscountCents = subtotalCents + newShippingCents - totalFromSession
-        const finalDiscountCents = currentDiscountCents > 0 ? currentDiscountCents : 0
-        const newTotalCents = subtotalCents - finalDiscountCents + newShippingCents
-
+        // Crea/aggiorna PaymentIntent
         const piRes = await fetch("/api/payment-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -304,9 +292,11 @@ function CheckoutInner({
 
         setClientSecret(piData.clientSecret)
         setIsCalculatingShipping(false)
+
+        console.log("[checkout] ✅ PaymentIntent creato, totale:", newTotalCents)
       } catch (err: any) {
-        console.error("Errore calcolo spedizione/payment:", err)
-        setShippingError(err.message || "Errore nel calcolo della spedizione")
+        console.error("Errore creazione payment:", err)
+        setShippingError(err.message || "Errore nel calcolo del totale")
         setIsCalculatingShipping(false)
       }
     }
@@ -343,7 +333,7 @@ function CheckoutInner({
     }
 
     if (!clientSecret) {
-      setError("Payment Intent non ancora creato. Attendi il calcolo della spedizione.")
+      setError("Payment Intent non ancora creato. Attendi il calcolo del totale.")
       return
     }
 
@@ -419,7 +409,7 @@ function CheckoutInner({
                 Dati di spedizione
               </h2>
               <p className="text-xs text-slate-400">
-                Inizia a digitare l'indirizzo e seleziona dalla lista per compilare automaticamente.
+                Spedizione flat €5.90 - applicata automaticamente.
               </p>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -551,7 +541,7 @@ function CheckoutInner({
 
               {isCalculatingShipping && (
                 <p className="text-xs text-blue-300/90 bg-blue-900/30 border border-blue-500/30 rounded-xl px-3 py-2">
-                  Calcolo spedizione da Shopify in corso...
+                  Calcolo totale in corso...
                 </p>
               )}
 
@@ -587,7 +577,7 @@ function CheckoutInner({
                 {loading
                   ? "Elaborazione in corso…"
                   : isCalculatingShipping
-                  ? "Calcolo spedizione..."
+                  ? "Calcolo totale..."
                   : `Paga ${formatMoney(totalToPayCents, currency)}`}
               </button>
 
@@ -607,7 +597,6 @@ function CheckoutInner({
         </section>
 
         <aside className="space-y-4">
-          {/* ... resto del codice sidebar identico ... */}
           <div className="glass-card p-5 md:p-6 space-y-4">
             <h2 className="text-sm font-semibold text-slate-100">
               Articoli nel carrello
@@ -709,11 +698,11 @@ function CheckoutInner({
                 <span className="text-slate-400">Spedizione</span>
                 <span className="text-slate-100">
                   {isCalculatingShipping ? (
-                    <span className="text-blue-300">Calcolo...</span>
+                    <span className="text-blue-300">...</span>
                   ) : calculatedShippingCents > 0 ? (
                     formatMoney(calculatedShippingCents, currency)
                   ) : (
-                    "Da calcolare"
+                    "€5.90"
                   )}
                 </span>
               </div>
@@ -721,7 +710,7 @@ function CheckoutInner({
 
             {calculatedShippingCents > 0 && (
               <p className="text-[11px] text-slate-400 mt-1">
-                Spedizione calcolata da Shopify
+                Spedizione flat Italia
               </p>
             )}
 
@@ -736,7 +725,7 @@ function CheckoutInner({
               {!isFormValid()
                 ? "Inserisci i dati di spedizione per calcolare il totale."
                 : isCalculatingShipping
-                ? "Calcolo spedizione in corso..."
+                ? "Calcolo totale in corso..."
                 : "Totale aggiornato con spedizione."}
             </p>
           </div>
@@ -745,8 +734,6 @@ function CheckoutInner({
     </main>
   )
 }
-
-// ... resto del codice identico (CheckoutPageContent, export default) ...
 
 function CheckoutPageContent() {
   const searchParams = useSearchParams()
