@@ -1,3 +1,4 @@
+// src/app/onboarding/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -28,7 +29,6 @@ export default function OnboardingPage() {
     const formData = new FormData(e.currentTarget);
 
     const payload = {
-      // 🔹 Config Shopify salvata come oggetto "shopify"
       shopify: {
         shopDomain: (formData.get("shopifyDomain") as string) || "",
         adminToken: (formData.get("shopifyAdminToken") as string) || "",
@@ -37,21 +37,21 @@ export default function OnboardingPage() {
         apiVersion: "2024-10",
       },
 
-      // 🔹 Stripe multi-account, con merchantSite + active + order
       stripeAccounts: STRIPE_ACCOUNTS.map((acc, index) => ({
         label:
           ((formData.get(`${acc.name}-label`) as string) ||
             acc.label) ?? `Account ${index + 1}`,
         secretKey: ((formData.get(`${acc.name}-secret`) as string) || "").trim(),
+        publishableKey: ((formData.get(`${acc.name}-publishable`) as string) || "").trim(),
         webhookSecret:
           ((formData.get(`${acc.name}-webhook`) as string) || "").trim(),
         active: formData.get(`${acc.name}-active`) === "on",
         order: index,
         merchantSite:
           ((formData.get(`${acc.name}-merchantSite`) as string) || "").trim(),
+        lastUsedAt: 0,
       })),
 
-      // 🔹 Default currency + dominio checkout
       defaultCurrency: (
         (formData.get("defaultCurrency") as string) ||
         "eur"
@@ -198,7 +198,7 @@ export default function OnboardingPage() {
                 </div>
                 <div className="text-right text-[11px] text-slate-400">
                   <p>Fino a 4 account Stripe</p>
-                  <p>Round-robin sui soli account attivi</p>
+                  <p>Rotazione automatica ogni 6 ore</p>
                 </div>
               </div>
 
@@ -246,19 +246,49 @@ export default function OnboardingPage() {
                           className="glass-input"
                           placeholder="sk_live_*** o sk_test_***"
                         />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          📍 Stripe Dashboard → Developers → API keys → Secret key
+                        </p>
                       </div>
 
                       <div>
-                        <label className="glass-label">Webhook Secret</label>
+                        <label className="glass-label">Publishable Key</label>
+                        <input
+                          name={`${acc.name}-publishable`}
+                          type="text"
+                          className="glass-input"
+                          placeholder="pk_live_*** o pk_test_***"
+                        />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          📍 Stripe Dashboard → Developers → API keys → Publishable key
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="glass-label">
+                          Webhook Secret{" "}
+                          <span className="text-[10px] font-normal text-amber-400">
+                            (Richiesto per ordini automatici)
+                          </span>
+                        </label>
                         <input
                           name={`${acc.name}-webhook`}
                           type="password"
                           className="glass-input"
-                          placeholder="whsec_*** (opzionale ma consigliato)"
+                          placeholder="whsec_***"
                         />
+                        <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                          <p className="font-medium text-slate-400">📍 Come ottenerlo:</p>
+                          <ol className="list-decimal list-inside space-y-0.5 pl-2">
+                            <li>Stripe Dashboard → Developers → Webhooks</li>
+                            <li>Click "Add endpoint"</li>
+                            <li>URL: <code className="text-emerald-400">https://tuo-dominio.vercel.app/api/webhooks/stripe</code></li>
+                            <li>Eventi: seleziona <code className="text-emerald-400">payment_intent.succeeded</code></li>
+                            <li>Copia il "Signing secret" (inizia con whsec_)</li>
+                          </ol>
+                        </div>
                       </div>
 
-                      {/* 👇 nuovo campo: merchant site per metadata / descriptor */}
                       <div>
                         <label className="glass-label">
                           Merchant site (per metadata / descriptor)
@@ -299,12 +329,34 @@ export default function OnboardingPage() {
                   • <code className="font-mono">/api/payment-intent</code>
                 </li>
                 <li>
-                  • <code className="font-mono">/api/shopify/create-order</code>
+                  • <code className="font-mono">/api/webhooks/stripe</code>
                 </li>
                 <li>
                   • <code className="font-mono">/api/discount/apply</code>
                 </li>
               </ul>
+            </section>
+
+            {/* Guida Webhook */}
+            <section className="glass-card p-5 md:p-6 space-y-3 bg-amber-950/20 border-amber-500/30">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚡</span>
+                <h3 className="text-sm font-semibold text-amber-300">
+                  Webhook Setup Importante
+                </h3>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Il webhook secret è necessario per creare automaticamente ordini su Shopify dopo il pagamento.
+              </p>
+              <div className="text-[11px] text-slate-400 space-y-2">
+                <p className="font-medium text-slate-300">Endpoint webhook:</p>
+                <code className="block bg-black/40 border border-white/10 rounded px-2 py-1.5 text-emerald-400 break-all">
+                  {typeof window !== "undefined" ? window.location.origin : "https://tuo-dominio.vercel.app"}/api/webhooks/stripe
+                </code>
+                <p className="mt-2">
+                  ⚠️ Configura questo endpoint su <strong>ogni</strong> account Stripe attivo.
+                </p>
+              </div>
             </section>
 
             {/* Stato + pulsanti */}
@@ -316,7 +368,7 @@ export default function OnboardingPage() {
               )}
               {saved && !error && (
                 <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-[11px] text-emerald-100">
-                  Configurazione salvata correttamente.
+                  ✓ Configurazione salvata correttamente.
                 </div>
               )}
 
