@@ -41,9 +41,8 @@ export async function POST(req: NextRequest) {
     const currency = (data.currency || "EUR").toString().toLowerCase()
 
     // -------------------------------
-    // 2) Calcolo importo in modo robusto
+    // 2) Calcolo importo IN BASE A SHOPIFY
     // -------------------------------
-
     const subtotalCents =
       typeof data.subtotalCents === "number"
         ? data.subtotalCents
@@ -58,15 +57,28 @@ export async function POST(req: NextRequest) {
       typeof data.totalCents === "number" ? data.totalCents : 0
 
     const rawCart = data.rawCart || {}
-    const totalFromRawCart =
-      typeof rawCart.total_price === "number" ? rawCart.total_price : 0
 
+    // Shopify di solito manda total_price come numero in centesimi
+    let totalFromRawCart = 0
+    if (typeof rawCart.total_price === "number") {
+      totalFromRawCart = rawCart.total_price
+    } else if (typeof rawCart.total_price === "string") {
+      const parsed = parseInt(rawCart.total_price, 10)
+      if (!Number.isNaN(parsed)) {
+        totalFromRawCart = parsed
+      }
+    }
+
+    // PRIORITÀ:
+    // 1) totale calcolato da Shopify (sconti + spedizione)
+    // 2) totalCents salvato in sessione
+    // 3) subtotal + shipping come fallback
     let amountCents = 0
 
-    if (totalFromSession > 0) {
-      amountCents = totalFromSession
-    } else if (totalFromRawCart > 0) {
+    if (totalFromRawCart > 0) {
       amountCents = totalFromRawCart
+    } else if (totalFromSession > 0) {
+      amountCents = totalFromSession
     } else {
       amountCents = subtotalCents + shippingCents
     }
@@ -90,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
 
     // -------------------------------
-    // 3) Prende la secret di Stripe + merchantSite da Firebase config
+    // 3) Config Stripe da Firebase
     // -------------------------------
     const cfg = await getConfig()
 
@@ -122,7 +134,6 @@ export async function POST(req: NextRequest) {
     const statementDescriptorSuffix =
       descriptorRaw.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 22) || "NFR"
 
-    // ✅ niente apiVersion esplicita → usa quella di account/dashboard
     const stripe = new Stripe(secretKey)
 
     // -------------------------------
