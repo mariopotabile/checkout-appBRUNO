@@ -156,8 +156,6 @@ function CheckoutInner({
     const place = autocompleteRef.current?.getPlace()
     if (!place || !place.address_components) return
 
-    console.log("[Autocomplete] Place selected:", place)
-
     let street = ""
     let streetNumber = ""
     let city = ""
@@ -198,14 +196,6 @@ function CheckoutInner({
       province: province || prev.province,
       countryCode: country || prev.countryCode,
     }))
-
-    console.log("[Autocomplete] ✅ Form aggiornato:", {
-      address1: fullAddress,
-      city,
-      postalCode,
-      province,
-      countryCode: country,
-    })
   }
 
   function handleChange(e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -242,21 +232,11 @@ function CheckoutInner({
         const flatShippingCents = 590
         setCalculatedShippingCents(flatShippingCents)
 
-        console.log("[checkout] ✅ Spedizione flat applicata: €5.90")
-
         const shopifyTotal = typeof cart.totalCents === "number" ? cart.totalCents : subtotalCents
         const currentDiscountCents = subtotalCents - shopifyTotal
         const finalDiscountCents = currentDiscountCents > 0 ? currentDiscountCents : 0
 
         const newTotalCents = subtotalCents - finalDiscountCents + flatShippingCents
-
-        console.log("[checkout] Calcolo totale:", {
-          subtotalCents,
-          shopifyTotal,
-          discountCents: finalDiscountCents,
-          shippingCents: flatShippingCents,
-          totalCents: newTotalCents,
-        })
 
         const piRes = await fetch("/api/payment-intent", {
           method: "POST",
@@ -286,8 +266,6 @@ function CheckoutInner({
 
         setClientSecret(piData.clientSecret)
         setIsCalculatingShipping(false)
-
-        console.log("[checkout] ✅ PaymentIntent creato, totale:", newTotalCents, `(€${(newTotalCents / 100).toFixed(2)})`)
       } catch (err: any) {
         console.error("Errore creazione payment:", err)
         setShippingError(err.message || "Errore nel calcolo del totale")
@@ -334,7 +312,6 @@ function CheckoutInner({
     try {
       setLoading(true)
 
-      // ✅ FIX: Rimosso shipping da confirmPayment (già impostato nel PaymentIntent dal backend)
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -374,347 +351,467 @@ function CheckoutInner({
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 flex justify-center px-4 py-8">
-      <div className="w-full max-w-5xl grid gap-8 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <section className="space-y-6">
-          <div>
-            <p className="text-xs text-slate-400 uppercase tracking-[0.18em]">
-              Checkout
-            </p>
-            <h1 className="mt-2 text-2xl md:text-3xl font-semibold">
-              Completa i dati di spedizione e paga in modo sicuro.
-            </h1>
+    <>
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          background: #fafafa;
+          color: #1a1a1a;
+        }
+
+        .shopify-input {
+          width: 100%;
+          padding: 11px 12px;
+          font-size: 14px;
+          line-height: 1.4;
+          color: #1a1a1a;
+          background: #fff;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .shopify-input:focus {
+          outline: none;
+          border-color: #005bd3;
+          box-shadow: 0 0 0 3px rgba(0, 91, 211, 0.1);
+        }
+
+        .shopify-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 500;
+          color: #303030;
+          margin-bottom: 6px;
+        }
+
+        .shopify-btn {
+          width: 100%;
+          padding: 16px 24px;
+          font-size: 15px;
+          font-weight: 600;
+          color: #fff;
+          background: #005bd3;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+
+        .shopify-btn:hover:not(:disabled) {
+          background: #004db5;
+        }
+
+        .shopify-btn:disabled {
+          background: #d1d5db;
+          cursor: not-allowed;
+        }
+
+        .shopify-card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 20px;
+          margin-bottom: 16px;
+        }
+
+        .summary-line {
+          display: flex;
+          justify-content: space-between;
+          font-size: 14px;
+          margin-bottom: 8px;
+        }
+
+        .summary-line.total {
+          font-size: 18px;
+          font-weight: 600;
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        @media (max-width: 999px) {
+          .mobile-order-summary {
+            display: block;
+          }
+          .desktop-order-summary {
+            display: none;
+          }
+        }
+
+        @media (min-width: 1000px) {
+          .mobile-order-summary {
+            display: none;
+          }
+          .desktop-order-summary {
+            display: block;
+          }
+        }
+      `}</style>
+
+      <div className="min-h-screen bg-[#fafafa]">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex justify-center">
+              <img
+                src="https://cdn.shopify.com/s/files/1/0899/2188/0330/files/logo_checkify_d8a640c7-98fe-4943-85c6-5d1a633416cf.png?v=1761832152"
+                alt="Logo"
+                className="h-8"
+              />
+            </div>
           </div>
+        </header>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="glass-card space-y-4 p-5 md:p-6">
-              <h2 className="text-sm font-semibold text-slate-100">
-                Dati di spedizione
-              </h2>
-              <p className="text-xs text-slate-400">
-                Spedizione flat €5.90 - applicata automaticamente.
-              </p>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="glass-label">Nome completo</label>
-                  <input
-                    name="fullName"
-                    value={customer.fullName}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="Nome e cognome"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={customer.email}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="nome@email.com"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">Telefono</label>
-                  <input
-                    name="phone"
-                    value={customer.phone}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="+39 ..."
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="glass-label">
-                    Indirizzo 🔍
-                    <span className="text-[10px] text-slate-500 ml-2">
-                      (inizia a digitare per autocompletare)
-                    </span>
-                  </label>
-                  <input
-                    ref={addressInputRef}
-                    name="address1"
-                    value={customer.address1}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="Via, numero civico"
-                    required
-                    autoComplete="off"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="glass-label">
-                    Complemento (scala, interno) — opzionale
-                  </label>
-                  <input
-                    name="address2"
-                    value={customer.address2}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="Interno, scala, c/o..."
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">Città</label>
-                  <input
-                    name="city"
-                    value={customer.city}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="Città"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">CAP</label>
-                  <input
-                    name="postalCode"
-                    value={customer.postalCode}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="CAP"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">Provincia</label>
-                  <input
-                    name="province"
-                    value={customer.province}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="MO"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="glass-label">Paese</label>
-                  <input
-                    name="countryCode"
-                    value={customer.countryCode}
-                    onChange={handleChange}
-                    className="glass-input"
-                    placeholder="IT"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-card space-y-4 p-5 md:p-6">
-              <h2 className="text-sm font-semibold text-slate-100">
-                Pagamento con carta
-              </h2>
-              <p className="text-xs text-slate-400">
-                Tutte le transazioni sono sicure.
-              </p>
-
-              {isCalculatingShipping && (
-                <p className="text-xs text-blue-300/90 bg-blue-900/30 border border-blue-500/30 rounded-xl px-3 py-2">
-                  Calcolo totale in corso...
-                </p>
-              )}
-
-              {shippingError && (
-                <p className="text-xs text-amber-300/90 bg-amber-900/30 border border-amber-500/30 rounded-xl px-3 py-2">
-                  {shippingError}
-                </p>
-              )}
-
-              {!clientSecret && !isCalculatingShipping && !shippingError && (
-                <p className="text-xs text-slate-400 bg-slate-800/50 border border-slate-700/50 rounded-xl px-3 py-2">
-                  Inserisci tutti i dati di spedizione per calcolare il totale.
-                </p>
-              )}
-
-              {clientSecret && (
-                <div className="border border-white/10 rounded-2xl p-3 bg-slate-900/60">
-                  <PaymentElement
-                    options={{
-                      layout: "tabs",
-                    }}
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="glass-button-primary w-full mt-2"
-                disabled={
-                  loading || !stripe || !elements || !isFormValid() || !clientSecret || isCalculatingShipping
-                }
-              >
-                {loading
-                  ? "Elaborazione in corso…"
-                  : isCalculatingShipping
-                  ? "Calcolo totale..."
-                  : `Paga ${formatMoney(totalToPayCents, currency)}`}
-              </button>
-
-              {error && (
-                <p className="text-xs text-rose-300 bg-rose-950/50 border border-rose-700/40 rounded-xl px-3 py-2">
-                  {error}
-                </p>
-              )}
-
-              {success && (
-                <p className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-700/40 rounded-xl px-3 py-2">
-                  Pagamento riuscito! Stiamo creando il tuo ordine su Shopify.
-                </p>
-              )}
-            </div>
-          </form>
-        </section>
-
-        <aside className="space-y-4">
-          <div className="glass-card p-5 md:p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-slate-100">
-              Articoli nel carrello
-            </h2>
-            <p className="text-xs text-slate-400">
-              ({cart.items.length} articolo{cart.items.length !== 1 ? "i" : ""})
-            </p>
-
-            <div className="space-y-4">
+        {/* Mobile Order Summary (Collapsible) */}
+        <div className="mobile-order-summary bg-white border-b border-gray-200 lg:hidden">
+          <details className="px-4 py-3">
+            <summary className="flex justify-between items-center cursor-pointer">
+              <span className="text-sm font-medium text-blue-600">
+                Mostra riepilogo ordine
+              </span>
+              <span className="text-lg font-semibold">
+                {formatMoney(totalToPayCents, currency)}
+              </span>
+            </summary>
+            <div className="mt-4 space-y-3">
               {cart.items.map((item, idx) => {
                 const baseUnit =
                   typeof item.priceCents === "number"
                     ? item.priceCents
                     : item.linePriceCents ?? 0
-
                 const line =
                   typeof item.linePriceCents === "number"
                     ? item.linePriceCents
                     : baseUnit * item.quantity
 
-                const fullLine = baseUnit * item.quantity
-                const diff = fullLine - line
-                const hasDiscount = diff > 0
-
                 return (
-                  <div
-                    key={`${item.id}-${idx}`}
-                    className="flex gap-3 items-start"
-                  >
+                  <div key={`${item.id}-${idx}`} className="flex gap-3">
                     {item.image && (
-                      <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-900/70 border border-white/10 flex-shrink-0">
+                      <div className="relative w-16 h-16 rounded border border-gray-200 flex-shrink-0">
                         <img
                           src={item.image}
                           alt={item.title}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover rounded"
                         />
+                        <span className="absolute -top-2 -right-2 bg-gray-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                          {item.quantity}
+                        </span>
                       </div>
                     )}
-                    <div className="flex-1 space-y-1">
-                      <p className="text-xs font-medium text-slate-100">
-                        {item.title}
-                      </p>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{item.title}</p>
                       {item.variantTitle && (
-                        <p className="text-[11px] text-slate-400">
-                          {item.variantTitle}
-                        </p>
+                        <p className="text-xs text-gray-600">{item.variantTitle}</p>
                       )}
-                      <p className="text-[11px] text-slate-400">
-                        {item.quantity}× {formatMoney(baseUnit, currency)}
-                      </p>
-
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-semibold">
-                          {formatMoney(line, currency)}
-                        </p>
-                        {hasDiscount && (
-                          <span className="text-[11px] text-emerald-300">
-                            Risparmi {formatMoney(diff, currency)}
-                          </span>
-                        )}
-                      </div>
                     </div>
+                    <p className="text-sm font-medium">{formatMoney(line, currency)}</p>
                   </div>
                 )
               })}
-            </div>
-          </div>
 
-          <div className="glass-card p-5 md:p-6 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-100">
-              Riepilogo ordine
-            </h2>
-
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Subtotale prodotti</span>
-                <span className="text-slate-100">
-                  {formatMoney(subtotalCents, currency)}
-                </span>
-              </div>
-
-              {discountCents > 0 && (
+              <div className="border-t border-gray-200 pt-3 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Sconto</span>
-                  <span className="text-emerald-300">
-                    −{formatMoney(discountCents, currency)}
+                  <span className="text-gray-600">Subtotale</span>
+                  <span>{formatMoney(subtotalCents - discountCents, currency)}</span>
+                </div>
+                {discountCents > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Sconto</span>
+                    <span>-{formatMoney(discountCents, currency)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Spedizione</span>
+                  <span>
+                    {calculatedShippingCents > 0
+                      ? formatMoney(calculatedShippingCents, currency)
+                      : "€5.90"}
                   </span>
                 </div>
-              )}
-
-              <div className="flex justify-between">
-                <span className="text-slate-400">Subtotale</span>
-                <span className="text-slate-100">
-                  {formatMoney(subtotalCents - discountCents, currency)}
-                </span>
+                <div className="flex justify-between text-lg font-semibold pt-2 border-t border-gray-200">
+                  <span>Totale</span>
+                  <span>{formatMoney(totalToPayCents, currency)}</span>
+                </div>
               </div>
+            </div>
+          </details>
+        </div>
 
-              <div className="flex justify-between">
-                <span className="text-slate-400">Spedizione</span>
-                <span className="text-slate-100">
-                  {isCalculatingShipping ? (
-                    <span className="text-blue-300">...</span>
-                  ) : calculatedShippingCents > 0 ? (
-                    formatMoney(calculatedShippingCents, currency)
-                  ) : (
-                    "€5.90"
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+          <div className="lg:grid lg:grid-cols-2 lg:gap-12">
+            {/* Left Column - Form */}
+            <div className="order-2 lg:order-1">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Contact */}
+                <div className="shopify-card">
+                  <h2 className="text-lg font-semibold mb-4">Contatti</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="shopify-label">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={customer.email}
+                        onChange={handleChange}
+                        className="shopify-input"
+                        placeholder="nome@email.com"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delivery */}
+                <div className="shopify-card">
+                  <h2 className="text-lg font-semibold mb-4">Consegna</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="shopify-label">Nome completo</label>
+                      <input
+                        name="fullName"
+                        value={customer.fullName}
+                        onChange={handleChange}
+                        className="shopify-input"
+                        placeholder="Nome e cognome"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="shopify-label">
+                        Indirizzo{" "}
+                        <span className="text-xs text-gray-500">(inizia a digitare)</span>
+                      </label>
+                      <input
+                        ref={addressInputRef}
+                        name="address1"
+                        value={customer.address1}
+                        onChange={handleChange}
+                        className="shopify-input"
+                        placeholder="Via, numero civico"
+                        required
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="shopify-label">Appartamento, scala, ecc. (opzionale)</label>
+                      <input
+                        name="address2"
+                        value={customer.address2}
+                        onChange={handleChange}
+                        className="shopify-input"
+                        placeholder="Es. Interno 5, Scala B"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="shopify-label">Città</label>
+                        <input
+                          name="city"
+                          value={customer.city}
+                          onChange={handleChange}
+                          className="shopify-input"
+                          placeholder="Città"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="shopify-label">CAP</label>
+                        <input
+                          name="postalCode"
+                          value={customer.postalCode}
+                          onChange={handleChange}
+                          className="shopify-input"
+                          placeholder="00100"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="shopify-label">Provincia</label>
+                        <input
+                          name="province"
+                          value={customer.province}
+                          onChange={handleChange}
+                          className="shopify-input"
+                          placeholder="RM"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="shopify-label">Telefono</label>
+                      <input
+                        name="phone"
+                        value={customer.phone}
+                        onChange={handleChange}
+                        className="shopify-input"
+                        placeholder="+39 333 1234567"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shipping Method */}
+                {calculatedShippingCents > 0 && (
+                  <div className="shopify-card">
+                    <h2 className="text-lg font-semibold mb-4">Metodo di spedizione</h2>
+                    <div className="flex items-center justify-between p-3 border border-gray-300 rounded bg-gray-50">
+                      <span className="text-sm font-medium">Spedizione Standard</span>
+                      <span className="text-sm font-semibold">
+                        {formatMoney(calculatedShippingCents, currency)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment */}
+                <div className="shopify-card">
+                  <h2 className="text-lg font-semibold mb-4">Pagamento</h2>
+
+                  {isCalculatingShipping && (
+                    <p className="text-sm text-blue-600 mb-4">Calcolo totale in corso...</p>
                   )}
-                </span>
+
+                  {shippingError && (
+                    <p className="text-sm text-red-600 mb-4">{shippingError}</p>
+                  )}
+
+                  {!clientSecret && !isCalculatingShipping && !shippingError && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Inserisci i dati di spedizione per procedere.
+                    </p>
+                  )}
+
+                  {clientSecret && (
+                    <div className="mb-4">
+                      <PaymentElement options={{ layout: "tabs" }} />
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="shopify-btn"
+                    disabled={
+                      loading ||
+                      !stripe ||
+                      !elements ||
+                      !isFormValid() ||
+                      !clientSecret ||
+                      isCalculatingShipping
+                    }
+                  >
+                    {loading
+                      ? "Elaborazione..."
+                      : isCalculatingShipping
+                      ? "Calcolo totale..."
+                      : `Paga ${formatMoney(totalToPayCents, currency)}`}
+                  </button>
+
+                  {error && (
+                    <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+                      {error}
+                    </p>
+                  )}
+
+                  {success && (
+                    <p className="mt-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded p-3">
+                      ✓ Pagamento riuscito! Stiamo creando il tuo ordine.
+                    </p>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Right Column - Order Summary (Desktop) */}
+            <div className="desktop-order-summary order-1 lg:order-2 mb-8 lg:mb-0">
+              <div className="shopify-card lg:sticky lg:top-6">
+                <h2 className="text-lg font-semibold mb-4">Riepilogo ordine</h2>
+
+                <div className="space-y-4 mb-6">
+                  {cart.items.map((item, idx) => {
+                    const baseUnit =
+                      typeof item.priceCents === "number"
+                        ? item.priceCents
+                        : item.linePriceCents ?? 0
+                    const line =
+                      typeof item.linePriceCents === "number"
+                        ? item.linePriceCents
+                        : baseUnit * item.quantity
+
+                    return (
+                      <div key={`${item.id}-${idx}`} className="flex gap-4">
+                        {item.image && (
+                          <div className="relative w-16 h-16 rounded border border-gray-200 flex-shrink-0">
+                            <img
+                              src={item.image}
+                              alt={item.title}
+                              className="w-full h-full object-cover rounded"
+                            />
+                            <span className="absolute -top-2 -right-2 bg-gray-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                              {item.quantity}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.title}</p>
+                          {item.variantTitle && (
+                            <p className="text-xs text-gray-600">{item.variantTitle}</p>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium whitespace-nowrap">
+                          {formatMoney(line, currency)}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="summary-line">
+                    <span className="text-gray-600">Subtotale</span>
+                    <span>{formatMoney(subtotalCents - discountCents, currency)}</span>
+                  </div>
+
+                  {discountCents > 0 && (
+                    <div className="summary-line text-red-600">
+                      <span>Sconto</span>
+                      <span>-{formatMoney(discountCents, currency)}</span>
+                    </div>
+                  )}
+
+                  <div className="summary-line">
+                    <span className="text-gray-600">Spedizione</span>
+                    <span>
+                      {calculatedShippingCents > 0
+                        ? formatMoney(calculatedShippingCents, currency)
+                        : "€5.90"}
+                    </span>
+                  </div>
+
+                  <div className="summary-line total">
+                    <span>Totale</span>
+                    <span>{formatMoney(totalToPayCents, currency)}</span>
+                  </div>
+                </div>
               </div>
             </div>
-
-            {calculatedShippingCents > 0 && (
-              <p className="text-[11px] text-slate-400 mt-1">
-                Spedizione flat Italia
-              </p>
-            )}
-
-            <div className="border-t border-white/10 mt-3 pt-3 flex justify-between items-baseline">
-              <span className="text-xs text-slate-400">Totale</span>
-              <span className="text-lg font-semibold text-slate-50">
-                {formatMoney(totalToPayCents, currency)}
-              </span>
-            </div>
-
-            <p className="text-[11px] text-slate-500 mt-1">
-              {!isFormValid()
-                ? "Inserisci i dati di spedizione per calcolare il totale."
-                : isCalculatingShipping
-                ? "Calcolo totale in corso..."
-                : "Totale aggiornato con spedizione."}
-            </p>
           </div>
-        </aside>
+        </div>
       </div>
-    </main>
+    </>
   )
 }
 
@@ -767,36 +864,36 @@ function CheckoutPageContent() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
-        <p className="text-sm text-slate-300">
-          Caricamento del checkout in corso…
-        </p>
-      </main>
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+        <p className="text-sm text-gray-600">Caricamento del checkout…</p>
+      </div>
     )
   }
 
   if (error || !cart) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4">
         <div className="max-w-md text-center space-y-3">
-          <h1 className="text-lg font-semibold">
-            Impossibile caricare il checkout
-          </h1>
-          <p className="text-sm text-slate-400">{error}</p>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-lg font-semibold">Impossibile caricare il checkout</h1>
+          <p className="text-sm text-gray-600">{error}</p>
+          <p className="text-xs text-gray-500">
             Ritorna al sito e riprova ad aprire il checkout.
           </p>
         </div>
-      </main>
+      </div>
     )
   }
 
   const options = {
     clientSecret: cart.paymentIntentClientSecret || undefined,
     appearance: {
-      theme: "night" as const,
+      theme: "stripe" as const,
       variables: {
-        colorPrimary: "#22c55e",
+        colorPrimary: "#005bd3",
+        colorBackground: "#ffffff",
+        colorText: "#1a1a1a",
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        borderRadius: "4px",
       },
     },
   }
@@ -812,9 +909,9 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
-          <p className="text-sm text-slate-300">Caricamento del checkout…</p>
-        </main>
+        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+          <p className="text-sm text-gray-600">Caricamento…</p>
+        </div>
       }
     >
       <CheckoutPageContent />
