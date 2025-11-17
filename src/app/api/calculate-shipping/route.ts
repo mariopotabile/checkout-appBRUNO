@@ -34,25 +34,25 @@ export async function POST(req: NextRequest) {
 
     const data: any = snap.data() || {}
 
-    console.log("[calculate-shipping] Struttura sessione:", {
+    console.log("[calculate-shipping] Sessione:", {
       sessionId,
       hasRawCart: !!data.rawCart,
-      hasRawCartItems: !!data.rawCart?.items,
-      rawCartItemsCount: data.rawCart?.items?.length,
+      hasItems: !!data.items,
+      itemsCount: data.rawCart?.items?.length || data.items?.length,
     })
 
     let cartItems: any[] = []
 
     if (Array.isArray(data.rawCart?.items) && data.rawCart.items.length > 0) {
       cartItems = data.rawCart.items
-      console.log("[calculate-shipping] Usando rawCart.items")
+      console.log("[calculate-shipping] ✓ Usando rawCart.items")
     } else if (Array.isArray(data.items) && data.items.length > 0) {
       cartItems = data.items
-      console.log("[calculate-shipping] Usando items array")
+      console.log("[calculate-shipping] ✓ Usando items array")
     }
 
     if (cartItems.length === 0) {
-      console.error("[calculate-shipping] Nessun item trovato")
+      console.error("[calculate-shipping] ✗ Carrello vuoto")
       return NextResponse.json({ error: "Carrello vuoto" }, { status: 400 })
     }
 
@@ -61,11 +61,11 @@ export async function POST(req: NextRequest) {
     const adminToken = cfg.shopify.adminToken
 
     if (!shopifyDomain || !adminToken) {
-      console.error("[calculate-shipping] Config Shopify mancante")
+      console.error("[calculate-shipping] ✗ Config mancante")
       return NextResponse.json({ error: "Configurazione Shopify mancante" }, { status: 500 })
     }
 
-    console.log(`[calculate-shipping] Calcolo per ${destination.city}, ${destination.countryCode}`)
+    console.log(`[calculate-shipping] → Calcolo spedizione per ${destination.city}, ${destination.countryCode}`)
 
     const shippingRates = await calculateShippingWithAdmin({
       shopifyDomain,
@@ -75,22 +75,21 @@ export async function POST(req: NextRequest) {
     })
 
     if (!shippingRates || shippingRates.length === 0) {
-      console.warn("[calculate-shipping] Nessuna tariffa trovata")
+      console.warn("[calculate-shipping] ⚠ Nessuna tariffa da Shopify, uso fallback")
       
-      // Fallback: usa tariffa fissa
       const fallbackShippingCents = getFallbackShipping(destination.countryCode)
       
       await db.collection(COLLECTION).doc(sessionId).update({
         shippingCents: fallbackShippingCents,
         shippingDestination: destination,
         shippingCalculatedAt: new Date().toISOString(),
-        shippingMethod: "Spedizione Standard (fallback)",
+        shippingMethod: "Spedizione Standard",
       })
 
       return NextResponse.json({
         shippingCents: fallbackShippingCents,
         destination,
-        method: "Spedizione Standard (fallback)",
+        method: "Spedizione Standard",
         currency: "EUR",
       })
     }
@@ -112,7 +111,6 @@ export async function POST(req: NextRequest) {
         title: rate.title,
         handle: rate.handle,
         priceCents: Math.round(parseFloat(rate.price) * 100),
-        currency: "EUR",
       })),
     })
 
@@ -126,11 +124,10 @@ export async function POST(req: NextRequest) {
         title: rate.title,
         handle: rate.handle,
         priceCents: Math.round(parseFloat(rate.price) * 100),
-        currency: "EUR",
       })),
     })
   } catch (error: any) {
-    console.error("[calculate-shipping] errore:", error)
+    console.error("[calculate-shipping] ✗ Errore:", error)
     return NextResponse.json(
       { error: error?.message || "Errore calcolo spedizione" },
       { status: 500 }
@@ -138,7 +135,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Calcola spedizione usando Shopify Admin API
 async function calculateShippingWithAdmin({
   shopifyDomain,
   adminToken,
@@ -150,8 +146,10 @@ async function calculateShippingWithAdmin({
   cartItems: any[]
   destination: Destination
 }) {
+  let draftOrderId: number | null = null
+
   try {
-    // Prepara line items per draft order
+    // Prepara line items
     const lineItems = cartItems.map((item: any) => {
       const variantId = item.variant_id || item.id
       
@@ -160,7 +158,7 @@ async function calculateShippingWithAdmin({
         return null
       }
 
-      // Rimuovi prefisso gid:// se presente
+      // Pulisci variant_id (rimuovi gid:// se presente)
       let cleanVariantId = variantId
       if (typeof variantId === "string" && variantId.startsWith("gid://")) {
         cleanVariantId = variantId.split("/").pop()
@@ -173,26 +171,12 @@ async function calculateShippingWithAdmin({
     }).filter(Boolean)
 
     if (lineItems.length === 0) {
-      throw new Error("Nessun line item valido")
+      throw new Error("Nessun line item valido trovato")
     }
 
-    console.log(`[calculateShippingWithAdmin] Creazione draft order per calcolare spedizione`)
+    console.log(`[calculateShippingWithAdmin] → Creazione draft order con ${lineItems.length} prodotti`)
 
-    // Crea un draft order temporaneo
-    const draftOrderPayload = {
-      draft_order: {
-        line_items: lineItems,
-        shipping_address: {
-          address1: " ",
-          city: destination.city || " ",
-          province: destination.province || undefined,
-          country_code: destination.countryCode || "IT",
-          zip: destination.postalCode || undefined,
-        },
-        use_customer_default_address: false,
-      },
-    }
-
+    // 1. CREA DRAFT ORDER
     const createResponse = await fetch(
       `https://${shopifyDomain}/admin/api/2024-10/draft_orders.json`,
       {
@@ -201,28 +185,40 @@ async function calculateShippingWithAdmin({
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": adminToken,
         },
-        body: JSON.stringify(draftOrderPayload),
+        body: JSON.stringify({
+          draft_order: {
+            line_items: lineItems,
+            shipping_address: {
+              address1: " ",
+              city: destination.city || " ",
+              province: destination.province || undefined,
+              country_code: destination.countryCode || "IT",
+              zip: destination.postalCode || undefined,
+            },
+            use_customer_default_address: false,
+          },
+        }),
       }
     )
 
     if (!createResponse.ok) {
       const errorText = await createResponse.text()
-      console.error("[calculateShippingWithAdmin] Errore creazione draft order:", createResponse.status, errorText)
+      console.error("[calculateShippingWithAdmin] ✗ Errore creazione draft order:", createResponse.status)
+      console.error("Dettagli:", errorText)
       throw new Error(`Errore creazione draft order: ${createResponse.status}`)
     }
 
     const draftOrderResult = await createResponse.json()
 
     if (!draftOrderResult.draft_order?.id) {
-      console.error("[calculateShippingWithAdmin] Nessun draft order creato")
+      console.error("[calculateShippingWithAdmin] ✗ Draft order non creato")
       return null
     }
 
-    const draftOrderId = draftOrderResult.draft_order.id
+    draftOrderId = draftOrderResult.draft_order.id
+    console.log(`[calculateShippingWithAdmin] ✓ Draft order creato: ${draftOrderId}`)
 
-    console.log(`[calculateShippingWithAdmin] Draft order creato: ${draftOrderId}`)
-
-    // Ottieni le shipping rates per questo draft order
+    // 2. OTTIENI SHIPPING RATES
     const ratesResponse = await fetch(
       `https://${shopifyDomain}/admin/api/2024-10/draft_orders/${draftOrderId}/shipping_rates.json`,
       {
@@ -236,9 +232,21 @@ async function calculateShippingWithAdmin({
 
     if (!ratesResponse.ok) {
       const errorText = await ratesResponse.text()
-      console.error("[calculateShippingWithAdmin] Errore recupero shipping rates:", ratesResponse.status, errorText)
-      
-      // Elimina draft order prima di uscire
+      console.error("[calculateShippingWithAdmin] ✗ Errore recupero shipping rates:", ratesResponse.status)
+      console.error("Dettagli:", errorText)
+      throw new Error(`Errore recupero shipping rates: ${ratesResponse.status}`)
+    }
+
+    const ratesResult = await ratesResponse.json()
+    const shippingRates = ratesResult.shipping_rates || []
+
+    console.log(
+      `[calculateShippingWithAdmin] ✓ Trovate ${shippingRates.length} tariffe:`,
+      shippingRates.map((r: any) => `${r.title}: €${r.price}`)
+    )
+
+    // 3. ELIMINA DRAFT ORDER (pulizia)
+    if (draftOrderId) {
       await fetch(
         `https://${shopifyDomain}/admin/api/2024-10/draft_orders/${draftOrderId}.json`,
         {
@@ -246,53 +254,52 @@ async function calculateShippingWithAdmin({
           headers: { "X-Shopify-Access-Token": adminToken },
         }
       )
-      
-      return null
+      console.log(`[calculateShippingWithAdmin] ✓ Draft order ${draftOrderId} eliminato`)
     }
-
-    const ratesResult = await ratesResponse.json()
-
-    // Elimina il draft order (pulizia)
-    await fetch(
-      `https://${shopifyDomain}/admin/api/2024-10/draft_orders/${draftOrderId}.json`,
-      {
-        method: "DELETE",
-        headers: { "X-Shopify-Access-Token": adminToken },
-      }
-    )
-
-    const shippingRates = ratesResult.shipping_rates || []
 
     if (shippingRates.length === 0) {
-      console.warn("[calculateShippingWithAdmin] Nessuna shipping rate disponibile")
+      console.warn("[calculateShippingWithAdmin] ⚠ Nessuna shipping rate disponibile")
       return null
     }
 
-    console.log(
-      `[calculateShippingWithAdmin] ✅ ${shippingRates.length} tariffe:`,
-      shippingRates.map((r: any) => `${r.title}: ${r.price} EUR`)
-    )
-
     return shippingRates.map((rate: any) => ({
-      handle: rate.handle || rate.id,
-      title: rate.title,
-      price: rate.price,
+      handle: rate.handle || rate.id || "standard",
+      title: rate.title || "Spedizione Standard",
+      price: rate.price || "0.00",
     }))
   } catch (error: any) {
-    console.error("[calculateShippingWithAdmin] errore:", error)
+    console.error("[calculateShippingWithAdmin] ✗ Errore:", error)
+    
+    // Cleanup: elimina draft order se esiste
+    if (draftOrderId) {
+      try {
+        await fetch(
+          `https://${shopifyDomain}/admin/api/2024-10/draft_orders/${draftOrderId}.json`,
+          {
+            method: "DELETE",
+            headers: { "X-Shopify-Access-Token": adminToken },
+          }
+        )
+        console.log(`[calculateShippingWithAdmin] ✓ Draft order ${draftOrderId} eliminato (cleanup)`)
+      } catch (cleanupError) {
+        console.error("[calculateShippingWithAdmin] ✗ Errore cleanup:", cleanupError)
+      }
+    }
+    
     throw error
   }
 }
 
-// Fallback: tariffe fisse se Shopify non risponde
 function getFallbackShipping(countryCode: string): number {
   const country = countryCode.toUpperCase()
+  
+  console.log(`[getFallbackShipping] Calcolo fallback per ${country}`)
   
   if (country === "IT") {
     return 500 // 5€
   } else if (["FR", "DE", "ES", "AT", "BE", "NL", "PT", "IE", "LU"].includes(country)) {
     return 1000 // 10€
-  } else if (["GB", "CH", "NO", "SE", "DK", "FI"].includes(country)) {
+  } else if (["GB", "CH", "NO", "SE", "DK", "FI", "PL", "CZ", "HU"].includes(country)) {
     return 1500 // 15€
   } else {
     return 2000 // 20€
