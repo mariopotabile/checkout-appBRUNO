@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { db } from "@/lib/firebaseAdmin"
+import { getActiveStripeAccount } from "@/lib/stripeRotation"
 import { getConfig } from "@/lib/config"
 
 const COLLECTION = "cartSessions"
@@ -67,31 +68,25 @@ export async function POST(req: NextRequest) {
     const province = customerBody.province || ""
     const countryCode = (customerBody.countryCode || "IT").toUpperCase()
 
-    const cfg = await getConfig()
+    // ✅ ROTAZIONE STRIPE: Ottieni account attivo
+    const activeAccount = await getActiveStripeAccount()
 
-    const stripeAccounts = Array.isArray(cfg.stripeAccounts)
-      ? cfg.stripeAccounts.filter((a: any) => a.secretKey)
-      : []
+    const secretKey = activeAccount.secretKey
+    const merchantSite = activeAccount.merchantSite || 
+                         (await getConfig()).checkoutDomain || 
+                         "https://notforresale.it"
 
-    const firstStripe = stripeAccounts[0] || null
-    const secretKey = firstStripe?.secretKey || process.env.STRIPE_SECRET_KEY || ""
-
-    if (!secretKey) {
-      console.error("[payment-intent] Nessuna Stripe secret key configurata")
-      return NextResponse.json({ error: "Configurazione Stripe mancante" }, { status: 500 })
-    }
-
-    const merchantSite: string =
-      firstStripe?.merchantSite ||
-      cfg.checkoutDomain ||
-      "https://notforresale.it"
-
-    const descriptorRaw = firstStripe?.label || "NFR"
+    const descriptorRaw = activeAccount.label || "NFR"
     const statementDescriptorSuffix =
       descriptorRaw.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 22) || "NFR"
 
-    // ✅ FIX: Rimuovi apiVersion o usa versione corretta
-    const stripe = new Stripe(secretKey)
+    console.log(`[payment-intent] 🔄 Account attivo: ${activeAccount.label}`)
+    console.log(`[payment-intent] 💰 Amount: €${(amountCents / 100).toFixed(2)}`)
+
+    // Inizializza Stripe con l'account rotato
+    const stripe = new Stripe(secretKey, {
+      apiVersion: "2025-10-29.clover",
+    })
 
     // ✅ CREA O OTTIENI CUSTOMER STRIPE
     let stripeCustomerId = data.stripeCustomerId as string | undefined
@@ -124,6 +119,7 @@ export async function POST(req: NextRequest) {
             metadata: {
               merchant_site: merchantSite,
               session_id: sessionId,
+              stripe_account: activeAccount.label, // ✅ Traccia quale account ha creato il customer
             },
           })
 
@@ -146,7 +142,7 @@ export async function POST(req: NextRequest) {
         ? String(data.items[0].title)
         : ""
 
-    // ✅ DESCRIPTION COME CARTSHIELD: "orderNumber | customer name"
+    // ✅ DESCRIPTION: "orderNumber | customer name"
     const orderNumber = data.orderNumber || sessionId
     const description = `${orderNumber} | ${fullName || "Guest"}`
 
@@ -189,6 +185,8 @@ export async function POST(req: NextRequest) {
           customer_name: fullName || "",
           order_id: orderNumber,
           first_item_title: firstItemTitle,
+          stripe_account: activeAccount.label, // ✅ Traccia account rotato
+          stripe_account_order: String(activeAccount.order || 0),
         },
       }
 
@@ -214,7 +212,7 @@ export async function POST(req: NextRequest) {
         receipt_email: email || undefined,
         statement_descriptor_suffix: statementDescriptorSuffix,
         
-        // ✅ AUTOMATIC PAYMENT METHODS (come CartShield)
+        // ✅ AUTOMATIC PAYMENT METHODS
         automatic_payment_methods: {
           enabled: true,
           allow_redirects: "always",
@@ -223,7 +221,7 @@ export async function POST(req: NextRequest) {
         // ✅ SHIPPING
         shipping: shipping,
 
-        // ✅ METADATA COMPLETO (come CartShield)
+        // ✅ METADATA COMPLETO con info rotazione
         metadata: {
           session_id: sessionId,
           merchant_site: merchantSite,
@@ -231,6 +229,9 @@ export async function POST(req: NextRequest) {
           customer_name: fullName || "",
           order_id: orderNumber,
           first_item_title: firstItemTitle,
+          stripe_account: activeAccount.label, // ✅ Traccia quale account ha processato
+          stripe_account_order: String(activeAccount.order || 0),
+          rotation_timestamp: new Date().toISOString(),
         },
       }
 
@@ -239,12 +240,15 @@ export async function POST(req: NextRequest) {
       console.log(
         `[payment-intent] ✅ PaymentIntent creato: ${paymentIntent.id} = €${(paymentIntent.amount / 100).toFixed(2)}`
       )
+      console.log(`[payment-intent] 🏷️ Account usato: ${activeAccount.label}`)
 
-      // Salva PaymentIntent ID in Firestore
+      // Salva PaymentIntent ID e account info in Firestore
       await db.collection(COLLECTION).doc(sessionId).update({
         paymentIntentId: paymentIntent.id,
         paymentIntentClientSecret: paymentIntent.client_secret,
-        stripeAccountLabel: firstStripe?.label || null,
+        stripeAccountLabel: activeAccount.label, // ✅ Traccia account usato
+        stripeAccountOrder: activeAccount.order || 0,
+        lastRotationAt: new Date().toISOString(),
       })
     }
 
@@ -264,7 +268,10 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json(
-      { clientSecret: paymentIntent.client_secret },
+      { 
+        clientSecret: paymentIntent.client_secret,
+        accountUsed: activeAccount.label, // ✅ Opzionale: info per debug
+      },
       { status: 200 }
     )
   } catch (error: any) {

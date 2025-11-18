@@ -15,36 +15,71 @@ export async function getActiveStripeAccount(): Promise<StripeAccount> {
     throw new Error("Nessun account Stripe attivo configurato")
   }
 
-  // Ordina per lastUsedAt (più vecchio first)
-  activeAccounts.sort((a, b) => (a.lastUsedAt || 0) - (b.lastUsedAt || 0))
+  // Ordina per "order" (0, 1, 2, 3...)
+  activeAccounts.sort((a, b) => (a.order || 0) - (b.order || 0))
 
   const now = Date.now()
-  let selectedAccount = activeAccounts[0]
 
-  // Se l'ultimo uso è più vecchio di 6 ore, usa quello
-  const timeSinceLastUse = now - (selectedAccount.lastUsedAt || 0)
+  // Calcola quale account usare in base all'ora
+  const hoursSinceEpoch = Math.floor(now / SIX_HOURS)
+  const accountIndex = hoursSinceEpoch % activeAccounts.length
 
-  if (timeSinceLastUse < SIX_HOURS && activeAccounts.length > 1) {
-    // Cerca il primo account non usato di recente
-    for (const account of activeAccounts) {
-      const accountTimeSinceUse = now - (account.lastUsedAt || 0)
-      if (accountTimeSinceUse >= SIX_HOURS) {
-        selectedAccount = account
-        break
-      }
-    }
+  const selectedAccount = activeAccounts[accountIndex]
+
+  // Aggiorna lastUsedAt solo se è passata almeno 1 ora
+  const currentLastUsed = selectedAccount.lastUsedAt || 0
+  const timeSinceLastUpdate = now - currentLastUsed
+
+  if (timeSinceLastUpdate > 60 * 60 * 1000) {
+    const updatedAccounts = config.stripeAccounts.map((a) =>
+      a.label === selectedAccount.label ? { ...a, lastUsedAt: now } : a
+    )
+
+    await db.collection("config").doc("global").update({
+      stripeAccounts: updatedAccounts,
+    })
+
+    console.log(`[stripeRotation] ✅ Account attivo: ${selectedAccount.label} (slot ${accountIndex + 1}/${activeAccounts.length})`)
   }
 
-  // Aggiorna lastUsedAt per l'account selezionato
-  const updatedAccounts = config.stripeAccounts.map((a) =>
-    a.label === selectedAccount.label ? { ...a, lastUsedAt: now } : a
+  return selectedAccount
+}
+
+// ✅ FUNZIONE PER VEDERE QUANDO CAMBIA IL PROSSIMO ACCOUNT
+export function getNextRotationTime(): Date {
+  const now = Date.now()
+  const hoursSinceEpoch = Math.floor(now / SIX_HOURS)
+  const nextRotationMs = (hoursSinceEpoch + 1) * SIX_HOURS
+  return new Date(nextRotationMs)
+}
+
+// ✅ FUNZIONE PER VEDERE L'ACCOUNT CORRENTE SENZA AGGIORNARE DB
+export async function getCurrentAccountInfo(): Promise<{
+  account: StripeAccount
+  slotNumber: number
+  totalSlots: number
+  nextRotation: Date
+}> {
+  const config = await getConfig()
+  
+  const activeAccounts = config.stripeAccounts.filter(
+    (a) => a.active && a.secretKey && a.publishableKey
   )
 
-  await db.collection("config").doc("global").update({
-    stripeAccounts: updatedAccounts,
-  })
+  if (activeAccounts.length === 0) {
+    throw new Error("Nessun account Stripe attivo configurato")
+  }
 
-  console.log(`[stripeRotation] ✓ Account attivo: ${selectedAccount.label}`)
+  activeAccounts.sort((a, b) => (a.order || 0) - (b.order || 0))
 
-  return selectedAccount
+  const now = Date.now()
+  const hoursSinceEpoch = Math.floor(now / SIX_HOURS)
+  const accountIndex = hoursSinceEpoch % activeAccounts.length
+
+  return {
+    account: activeAccounts[accountIndex],
+    slotNumber: accountIndex + 1,
+    totalSlots: activeAccounts.length,
+    nextRotation: getNextRotationTime(),
+  }
 }
