@@ -87,7 +87,7 @@ function CheckoutInner({
     return 'https://imjsqk-my.myshopify.com/cart'
   }, [cart.shopDomain])
 
-  const [expressCheckoutReady, setExpressCheckoutReady] = useState(false)
+  const [expressCheckoutReady, setExpressCheckoutReady] = useState<boolean | null>(null)
   const [expressCheckoutError, setExpressCheckoutError] = useState<string | null>(null)
   const expressCheckoutRef = useRef<any>(null)
 
@@ -135,82 +135,88 @@ function CheckoutInner({
 
   const totalToPayCents = subtotalCents - discountCents + 590
 
-  
-// EXPRESS CHECKOUT INIT
-useEffect(() => {
-  async function initExpressCheckout() {
-    if (!stripe || expressCheckoutRef.current) return
+  // EXPRESS CHECKOUT INIT
+  useEffect(() => {
+    async function initExpressCheckout() {
+      if (!stripe || expressCheckoutRef.current) return
 
-    try {
-      const res = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionId,
-          cartData: cart 
-        })
-      })
-
-      // ✅ FIX: Controlla se la risposta è valida
-      if (!res.ok) {
-        const errorText = await res.text()
-        console.error('[Express] API Error:', errorText)
-        throw new Error(`API Error: ${res.status}`)
-      }
-
-      // ✅ FIX: Controlla se c'è contenuto
-      const contentType = res.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await res.text()
-        console.error('[Express] Non-JSON response:', text)
-        throw new Error('Risposta non valida dal server')
-      }
-
-      const data = await res.json()
-
-      if (!data.clientSecret) {
-        console.error('[Express] Missing clientSecret:', data)
-        throw new Error(data.error || 'Client secret mancante')
-      }
-
-      const checkout = await stripe.initCheckout({ 
-        clientSecret: data.clientSecret 
-      })
-
-      const expressElement = checkout.createExpressCheckoutElement()
-
-      expressElement.mount('#express-checkout-element')
-      expressCheckoutRef.current = expressElement
-
-      const loadActionsResult = await checkout.loadActions()
-      
-      if (loadActionsResult.type === 'success') {
-        expressElement.on('confirm', async (event) => {
-          const result = await loadActionsResult.actions.confirm({
-            expressCheckoutConfirmEvent: event
+      try {
+        const res = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            sessionId,
+            cartData: cart 
           })
+        })
 
-          if (result.type === 'success') {
-            console.log('[Express] ✅ Pagamento completato')
-            window.location.href = `/checkout-return?session_id=${data.checkoutSessionId}`
+        if (!res.ok) {
+          const errorText = await res.text()
+          console.error('[Express] API Error:', errorText)
+          setExpressCheckoutReady(false)
+          return
+        }
+
+        const data = await res.json()
+
+        if (!data.clientSecret) {
+          console.error('[Express] Missing clientSecret')
+          setExpressCheckoutReady(false)
+          return
+        }
+
+        const checkout = await stripe.initCheckout({ 
+          clientSecret: data.clientSecret 
+        })
+
+        const expressElement = checkout.createExpressCheckoutElement()
+
+        expressElement.on('ready', (event: any) => {
+          console.log('[Express] Ready event:', event)
+          
+          if (!event.availablePaymentMethods || event.availablePaymentMethods.length === 0) {
+            console.log('[Express] ⚠️ Nessun metodo disponibile, nascondo sezione')
+            setExpressCheckoutReady(false)
+            
+            if (expressCheckoutRef.current) {
+              expressCheckoutRef.current.unmount()
+              expressCheckoutRef.current = null
+            }
           } else {
-            setExpressCheckoutError('Pagamento non riuscito')
+            console.log('[Express] ✅ Metodi disponibili:', event.availablePaymentMethods)
+            setExpressCheckoutReady(true)
           }
         })
+
+        expressElement.mount('#express-checkout-element')
+        expressCheckoutRef.current = expressElement
+
+        const loadActionsResult = await checkout.loadActions()
+        
+        if (loadActionsResult.type === 'success') {
+          expressElement.on('confirm', async (event) => {
+            const result = await loadActionsResult.actions.confirm({
+              expressCheckoutConfirmEvent: event
+            })
+
+            if (result.type === 'success') {
+              console.log('[Express] ✅ Pagamento completato')
+              window.location.href = `/checkout-return?session_id=${data.checkoutSessionId}`
+            } else {
+              setExpressCheckoutError('Pagamento non riuscito')
+            }
+          })
+        }
+
+        console.log('[Express Checkout] ✅ Inizializzato')
+      } catch (err: any) {
+        console.error('[Express Checkout Error]:', err)
+        setExpressCheckoutReady(false)
       }
-
-      setExpressCheckoutReady(true)
-      console.log('[Express Checkout] ✅ Inizializzato')
-    } catch (err: any) {
-      console.error('[Express Checkout Error]:', err)
-      setExpressCheckoutError(err.message)
-      // ✅ Non bloccare il checkout normale
     }
-  }
 
-  initExpressCheckout()
-}, [stripe, sessionId, cart])
-
+    initExpressCheckout()
+  }, [stripe, sessionId, cart])
 
   // GOOGLE MAPS AUTOCOMPLETE
   useEffect(() => {
@@ -846,22 +852,24 @@ useEffect(() => {
           <div className="lg:grid lg:grid-cols-2 lg:gap-12">
             <div className="order-2 lg:order-1">
               
-              {/* EXPRESS CHECKOUT */}
-              <div className="shopify-card mb-6">
-                <h2 className="text-lg font-semibold mb-4">Checkout Rapido</h2>
-                
-                <div id="express-checkout-element"></div>
+              {/* EXPRESS CHECKOUT - MOSTRA SOLO SE DISPONIBILE */}
+              {expressCheckoutReady === true && (
+                <div className="shopify-card mb-6">
+                  <h2 className="text-lg font-semibold mb-4">Checkout Rapido</h2>
+                  
+                  <div id="express-checkout-element"></div>
 
-                {expressCheckoutError && (
-                  <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
-                    {expressCheckoutError}
-                  </p>
-                )}
+                  {expressCheckoutError && (
+                    <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                      {expressCheckoutError}
+                    </p>
+                  )}
 
-                <div className="express-divider">
-                  <span>oppure</span>
+                  <div className="express-divider">
+                    <span>oppure</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* FORM TRADIZIONALE */}
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -1251,3 +1259,4 @@ export default function CheckoutPage() {
     </Suspense>
   )
 }
+
