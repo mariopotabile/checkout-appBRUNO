@@ -131,6 +131,8 @@ function CheckoutInner({
 
   const totalToPayCents = subtotalCents - discountCents + 590
 
+  // EXPRESS CHECKOUT - DISABILITATO TEMPORANEAMENTE
+  /*
   useEffect(() => {
     async function initExpressCheckout() {
       if (!stripe || expressCheckoutRef.current) return
@@ -204,6 +206,7 @@ function CheckoutInner({
 
     initExpressCheckout()
   }, [stripe, sessionId, cart])
+  */
 
   useEffect(() => {
     let mounted = true
@@ -560,36 +563,6 @@ function CheckoutInner({
           border-top: 1px solid #e5e7eb;
         }
 
-        #express-checkout-element {
-          min-height: 50px;
-        }
-
-        .express-divider {
-          position: relative;
-          text-align: center;
-          margin: 24px 0;
-        }
-
-        .express-divider::before {
-          content: '';
-          position: absolute;
-          top: 50%;
-          left: 0;
-          right: 0;
-          height: 1px;
-          background: #e5e7eb;
-        }
-
-        .express-divider span {
-          position: relative;
-          display: inline-block;
-          padding: 0 16px;
-          background: #fff;
-          color: #6b7280;
-          font-size: 14px;
-          font-weight: 500;
-        }
-
         .pac-container {
           background-color: #ffffff !important;
           border: 1px solid #e5e7eb !important;
@@ -732,6 +705,7 @@ function CheckoutInner({
             <div className="lg:pr-8">
               <form onSubmit={handleSubmit} className="space-y-6">
                 
+                {/* EXPRESS CHECKOUT DISABILITATO
                 {expressCheckoutReady === true && (
                   <div className="shopify-card">
                     <h2 className="text-base font-semibold mb-4">Pagamento rapido</h2>
@@ -744,6 +718,7 @@ function CheckoutInner({
                     </div>
                   </div>
                 )}
+                */}
 
                 <div className="shopify-card">
                   <h2 className="text-base font-semibold mb-4">Informazioni di contatto</h2>
@@ -1017,21 +992,28 @@ function CheckoutPageContent() {
 
         setCart(data)
 
-        // ✅ CARICA PUBLISHABLE KEY DINAMICA CON FALLBACK
+        // ✅ CARICA PUBLISHABLE KEY DINAMICA SENZA FALLBACK
         try {
           const pkRes = await fetch('/api/stripe-status')
+          
+          if (!pkRes.ok) {
+            throw new Error('API stripe-status non disponibile')
+          }
+          
           const pkData = await pkRes.json()
 
           if (pkData.publishableKey) {
             console.log('[Checkout] ✅ Publishable key dinamica:', pkData.publishableKey.substring(0, 30))
+            console.log('[Checkout] ✅ Account:', pkData.accountLabel)
             setStripePromise(loadStripe(pkData.publishableKey))
           } else {
-            console.warn('[Checkout] ⚠️ Fallback a chiave default')
-            setStripePromise(loadStripe('pk_live_51ROEYLCa9HTwxY0vOGAftSCds8BsQiuu2J7xYdrxExmaiNjGYLj53IxWLQZHKEbp6HYTuJWxQGaKbIwXwEp3GyUL00wGbQVnN5'))
+            throw new Error('PublishableKey non ricevuta da API')
           }
         } catch (err) {
-          console.error('[Checkout] Errore caricamento stripe-status, uso fallback:', err)
-          setStripePromise(loadStripe('pk_live_51ROEYLCa9HTwxY0vOGAftSCds8BsQiuu2J7xYdrxExmaiNjGYLj53IxWLQZHKEbp6HYTuJWxQGaKbIwXwEp3GyUL00wGbQVnN5'))
+          console.error('[Checkout] ❌ Errore caricamento stripe-status:', err)
+          setError('Impossibile inizializzare il sistema di pagamento. Riprova.')
+          setLoading(false)
+          return
         }
 
         setLoading(false)
