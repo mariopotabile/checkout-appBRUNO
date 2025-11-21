@@ -356,6 +356,7 @@ function CheckoutInner({
 
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
+        clientSecret: clientSecret,
         confirmParams: {
           return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
           payment_method_data: {
@@ -991,4 +992,3 @@ export default function CheckoutPage() {
     </Suspense>
   )
 }
-
