@@ -16,7 +16,7 @@ export async function GET() {
       order: acc.order ?? index,
       merchantSite: acc.merchantSite || "",
       lastUsedAt: acc.lastUsedAt || 0,
-      // ✅ AGGIUNTA: Product titles
+      // ✅ Product titles
       productTitle1: acc.productTitle1 || "",
       productTitle2: acc.productTitle2 || "",
       productTitle3: acc.productTitle3 || "",
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     console.log("[config POST] ✓ Payload ricevuto")
+    console.log("[config POST] 📦 StripeAccounts ricevuti:", body.stripeAccounts?.length || 0)
 
     // ✅ Shopify Config
     const shopify: ShopifyConfig = {
@@ -63,41 +64,47 @@ export async function POST(req: NextRequest) {
     const existingConfig = await getConfig()
     const existingAccounts = existingConfig.stripeAccounts || []
 
-    // ✅ Stripe Accounts con TUTTI i campi (inclusi productTitle)
+    // ✅ Stripe Accounts - USA SPREAD OPERATOR per preservare tutti i campi
     const stripeAccounts: StripeAccount[] = (body.stripeAccounts || [])
       .slice(0, 4)
       .map((acc: any, idx: number) => {
         const existingAccount = existingAccounts[idx]
 
-        const normalized = {
+        // ✅ FIX: Spread dell'oggetto ricevuto per preservare productTitle1-10
+        const normalized: StripeAccount = {
+          ...acc, // ✅ PRESERVA TUTTI I CAMPI (inclusi productTitle)
+          // Poi sovrascrivi solo i campi che vuoi normalizzare
           label: (acc.label || `Account ${idx + 1}`).trim(),
           secretKey: (acc.secretKey || "").trim(),
-          publishableKey: (acc.publishableKey || "").trim(), // ✅ IMPORTANTE
+          publishableKey: (acc.publishableKey || "").trim(),
           webhookSecret: (acc.webhookSecret || "").trim(),
           active: !!acc.active,
           order: typeof acc.order === "number" ? acc.order : idx,
           merchantSite: (acc.merchantSite || "").trim(),
-          lastUsedAt: acc.lastUsedAt ?? existingAccount?.lastUsedAt ?? 0, // ✅ PRESERVA O INIZIALIZZA
-          // ✅ AGGIUNTA: Product titles
-          productTitle1: (acc.productTitle1 || "").trim(),
-          productTitle2: (acc.productTitle2 || "").trim(),
-          productTitle3: (acc.productTitle3 || "").trim(),
-          productTitle4: (acc.productTitle4 || "").trim(),
-          productTitle5: (acc.productTitle5 || "").trim(),
-          productTitle6: (acc.productTitle6 || "").trim(),
-          productTitle7: (acc.productTitle7 || "").trim(),
-          productTitle8: (acc.productTitle8 || "").trim(),
-          productTitle9: (acc.productTitle9 || "").trim(),
-          productTitle10: (acc.productTitle10 || "").trim(),
+          lastUsedAt: acc.lastUsedAt ?? existingAccount?.lastUsedAt ?? 0,
         }
 
-        console.log(`[config POST] Account ${idx} normalizzato:`, {
-          label: normalized.label,
+        // Log per debug
+        const productTitlesCount = [
+          normalized.productTitle1,
+          normalized.productTitle2,
+          normalized.productTitle3,
+          normalized.productTitle4,
+          normalized.productTitle5,
+          normalized.productTitle6,
+          normalized.productTitle7,
+          normalized.productTitle8,
+          normalized.productTitle9,
+          normalized.productTitle10,
+        ].filter(Boolean).length
+
+        console.log(`[config POST] Account ${idx} (${normalized.label}):`, {
           hasSecretKey: !!normalized.secretKey,
           hasPublishableKey: !!normalized.publishableKey,
           hasWebhook: !!normalized.webhookSecret,
           active: normalized.active,
           lastUsedAt: normalized.lastUsedAt,
+          productTitlesCount, // ✅ Quanti product titles sono presenti
         })
 
         return normalized
@@ -118,10 +125,24 @@ export async function POST(req: NextRequest) {
 
     // ✅ Verifica salvataggio
     const verifiedConfig = await getConfig()
+    const verifiedProductTitlesCount = [
+      verifiedConfig.stripeAccounts?.[0]?.productTitle1,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle2,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle3,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle4,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle5,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle6,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle7,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle8,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle9,
+      verifiedConfig.stripeAccounts?.[0]?.productTitle10,
+    ].filter(Boolean).length
+
     console.log("[config POST] ✓ Verifica primo account:", {
       label: verifiedConfig.stripeAccounts?.[0]?.label,
       hasPublishableKey: !!verifiedConfig.stripeAccounts?.[0]?.publishableKey,
       lastUsedAt: verifiedConfig.stripeAccounts?.[0]?.lastUsedAt,
+      productTitlesCount: verifiedProductTitlesCount, // ✅ Verifica che siano salvati
     })
 
     return NextResponse.json({ success: true })

@@ -11,12 +11,23 @@ export interface ShopifyConfig {
 export interface StripeAccount {
   label: string
   secretKey: string
-  publishableKey: string      // ✅ AGGIUNTO
+  publishableKey: string
   webhookSecret: string
   active?: boolean
   order?: number
   merchantSite?: string
-  lastUsedAt?: number         // ✅ AGGIUNTO per rotazione
+  lastUsedAt?: number
+  // ✅ AGGIUNTA: Product titles dinamici
+  productTitle1?: string
+  productTitle2?: string
+  productTitle3?: string
+  productTitle4?: string
+  productTitle5?: string
+  productTitle6?: string
+  productTitle7?: string
+  productTitle8?: string
+  productTitle9?: string
+  productTitle10?: string
 }
 
 export interface AppConfig {
@@ -44,42 +55,83 @@ const defaultConfig: AppConfig = {
     { 
       label: "Account 1", 
       secretKey: "", 
-      publishableKey: "",     // ✅ AGGIUNTO
+      publishableKey: "",
       webhookSecret: "", 
       active: true, 
       order: 0,
       merchantSite: "",
-      lastUsedAt: 0,          // ✅ AGGIUNTO
+      lastUsedAt: 0,
+      // ✅ AGGIUNTA: Default product titles vuoti
+      productTitle1: "",
+      productTitle2: "",
+      productTitle3: "",
+      productTitle4: "",
+      productTitle5: "",
+      productTitle6: "",
+      productTitle7: "",
+      productTitle8: "",
+      productTitle9: "",
+      productTitle10: "",
     },
     { 
       label: "Account 2", 
       secretKey: "", 
-      publishableKey: "",     // ✅ AGGIUNTO
+      publishableKey: "",
       webhookSecret: "", 
       active: false, 
       order: 1,
       merchantSite: "",
-      lastUsedAt: 0,          // ✅ AGGIUNTO
+      lastUsedAt: 0,
+      productTitle1: "",
+      productTitle2: "",
+      productTitle3: "",
+      productTitle4: "",
+      productTitle5: "",
+      productTitle6: "",
+      productTitle7: "",
+      productTitle8: "",
+      productTitle9: "",
+      productTitle10: "",
     },
     { 
       label: "Account 3", 
       secretKey: "", 
-      publishableKey: "",     // ✅ AGGIUNTO
+      publishableKey: "",
       webhookSecret: "", 
       active: false, 
       order: 2,
       merchantSite: "",
-      lastUsedAt: 0,          // ✅ AGGIUNTO
+      lastUsedAt: 0,
+      productTitle1: "",
+      productTitle2: "",
+      productTitle3: "",
+      productTitle4: "",
+      productTitle5: "",
+      productTitle6: "",
+      productTitle7: "",
+      productTitle8: "",
+      productTitle9: "",
+      productTitle10: "",
     },
     { 
       label: "Account 4", 
       secretKey: "", 
-      publishableKey: "",     // ✅ AGGIUNTO
+      publishableKey: "",
       webhookSecret: "", 
       active: false, 
       order: 3,
       merchantSite: "",
-      lastUsedAt: 0,          // ✅ AGGIUNTO
+      lastUsedAt: 0,
+      productTitle1: "",
+      productTitle2: "",
+      productTitle3: "",
+      productTitle4: "",
+      productTitle5: "",
+      productTitle6: "",
+      productTitle7: "",
+      productTitle8: "",
+      productTitle9: "",
+      productTitle10: "",
     },
   ],
 }
@@ -102,18 +154,29 @@ export async function getConfig(): Promise<AppConfig> {
       data.shopify?.storefrontToken || defaultConfig.shopify.storefrontToken,
   }
 
-  // ✅ Normalizza stripeAccounts con TUTTI i campi
+  // ✅ Normalizza stripeAccounts con TUTTI i campi (inclusi productTitle)
   const stripeAccounts: StripeAccount[] = (data.stripeAccounts ||
     defaultConfig.stripeAccounts
   ).map((acc: any, idx: number) => ({
     label: acc?.label || `Account ${idx + 1}`,
     secretKey: acc?.secretKey || "",
-    publishableKey: acc?.publishableKey || "",           // ✅ AGGIUNTO
+    publishableKey: acc?.publishableKey || "",
     webhookSecret: acc?.webhookSecret || "",
     active: acc?.active ?? (idx === 0),
     order: typeof acc?.order === "number" ? acc.order : idx,
     merchantSite: acc?.merchantSite || "",
-    lastUsedAt: acc?.lastUsedAt || 0,                    // ✅ AGGIUNTO
+    lastUsedAt: acc?.lastUsedAt || 0,
+    // ✅ AGGIUNTA: Product titles
+    productTitle1: acc?.productTitle1 || "",
+    productTitle2: acc?.productTitle2 || "",
+    productTitle3: acc?.productTitle3 || "",
+    productTitle4: acc?.productTitle4 || "",
+    productTitle5: acc?.productTitle5 || "",
+    productTitle6: acc?.productTitle6 || "",
+    productTitle7: acc?.productTitle7 || "",
+    productTitle8: acc?.productTitle8 || "",
+    productTitle9: acc?.productTitle9 || "",
+    productTitle10: acc?.productTitle10 || "",
   }))
 
   return {
@@ -132,12 +195,23 @@ export async function setConfig(newConfig: Partial<AppConfig>): Promise<void> {
     newConfig.stripeAccounts = newConfig.stripeAccounts.map((acc: any, idx: number) => ({
       label: acc?.label || `Account ${idx + 1}`,
       secretKey: acc?.secretKey || "",
-      publishableKey: acc?.publishableKey || "",         // ✅ GARANTITO
+      publishableKey: acc?.publishableKey || "",
       webhookSecret: acc?.webhookSecret || "",
       active: acc?.active ?? false,
       order: typeof acc?.order === "number" ? acc.order : idx,
       merchantSite: acc?.merchantSite || "",
-      lastUsedAt: acc?.lastUsedAt ?? 0,                  // ✅ GARANTITO
+      lastUsedAt: acc?.lastUsedAt ?? 0,
+      // ✅ AGGIUNTA: Preserva product titles
+      productTitle1: acc?.productTitle1 || "",
+      productTitle2: acc?.productTitle2 || "",
+      productTitle3: acc?.productTitle3 || "",
+      productTitle4: acc?.productTitle4 || "",
+      productTitle5: acc?.productTitle5 || "",
+      productTitle6: acc?.productTitle6 || "",
+      productTitle7: acc?.productTitle7 || "",
+      productTitle8: acc?.productTitle8 || "",
+      productTitle9: acc?.productTitle9 || "",
+      productTitle10: acc?.productTitle10 || "",
     }))
   }
 
@@ -157,7 +231,7 @@ export async function getActiveStripeAccount(): Promise<StripeAccount | null> {
 
   // Cerca account attivo con secretKey
   const active = cfg.stripeAccounts.find(
-    a => a.active && a.secretKey && a.publishableKey  // ✅ Verifica anche publishableKey
+    a => a.active && a.secretKey && a.publishableKey
   )
   if (active) {
     console.log(`[getActiveStripeAccount] ✓ Account attivo: ${active.label}`)
@@ -166,7 +240,7 @@ export async function getActiveStripeAccount(): Promise<StripeAccount | null> {
 
   // Fallback: primo con secretKey
   const withKey = cfg.stripeAccounts.find(
-    a => a.secretKey && a.publishableKey              // ✅ Verifica anche publishableKey
+    a => a.secretKey && a.publishableKey
   )
   if (withKey) {
     console.log(`[getActiveStripeAccount] ⚠ Fallback a primo account con keys: ${withKey.label}`)
