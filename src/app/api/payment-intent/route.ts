@@ -68,31 +68,8 @@ export async function POST(req: NextRequest) {
     // ✅ USA SEMPRE L'ACCOUNT ATTIVO CORRENTE
     const activeAccount = await getActiveStripeAccount()
 
-    // ✅ LOG ESPLICITO DELLA SECRET KEY USATA
-    console.log('[payment-intent] 🔑 SECRET KEY USATA:', {
-      label: activeAccount.label,
-      secretKeyFull: activeAccount.secretKey,
-      secretKeyStart: activeAccount.secretKey.substring(0, 35),
-    })
-
-    // ✅ VERIFICA ESPLICITA
-    if (activeAccount.label === 'US 2 CUMPEN') {
-      console.log('[payment-intent] ✅ Dovrebbe usare: sk_live_51SPOFcIUmZFho3kP...')
-      if (!activeAccount.secretKey.startsWith('sk_live_51SPOFcIUmZFho3kP')) {
-        console.error('[payment-intent] ❌ ERRORE! Usa secret key di NFR1 invece di US 2 CUMPEN!')
-        console.error('[payment-intent] ❌ Secret ricevuta:', activeAccount.secretKey.substring(0, 35))
-      }
-    }
-
-    if (activeAccount.label === 'NFR1') {
-      console.log('[payment-intent] ✅ Dovrebbe usare: sk_live_51ROEYLCa9HTwxY0v...')
-      if (!activeAccount.secretKey.startsWith('sk_live_51ROEYLCa9HTwxY0v')) {
-        console.error('[payment-intent] ❌ ERRORE! Usa secret key di US 2 CUMPEN invece di NFR1!')
-        console.error('[payment-intent] ❌ Secret ricevuta:', activeAccount.secretKey.substring(0, 35))
-      }
-    }
-
     const secretKey = activeAccount.secretKey
+    const publishableKey = activeAccount.publishableKey // ✅ PUBLISHABLE KEY DINAMICA
     const merchantSite = activeAccount.merchantSite || 'https://nfrcheckout.com'
 
     const descriptorRaw = activeAccount.label || "NFR"
@@ -113,10 +90,11 @@ export async function POST(req: NextRequest) {
       : 'NFR Product'
 
     console.log(`[payment-intent] 🔄 Account attivo: ${activeAccount.label}`)
+    console.log(`[payment-intent] 🔑 Publishable Key: ${publishableKey.substring(0, 30)}...`)
     console.log(`[payment-intent] 🎲 Product title: ${randomProductTitle}`)
     console.log(`[payment-intent] 💰 Amount: €${(amountCents / 100).toFixed(2)}`)
 
-    // Inizializza Stripe
+    // Inizializza Stripe con secret key dell'account attivo
     const stripe = new Stripe(secretKey, {
       apiVersion: "2025-10-29.clover",
     })
@@ -186,7 +164,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ✅ STRATEGIA SEMPLICE: Crea sempre nuovo PI sull'account corrente
+    // ✅ CREA NUOVO PI sull'account corrente
     console.log(`[payment-intent] 🆕 Creazione nuovo PI su account corrente`)
 
     const params: Stripe.PaymentIntentCreateParams = {
@@ -236,9 +214,11 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // ✅ RITORNA PUBLISHABLE KEY DINAMICA
     return NextResponse.json(
       { 
         clientSecret: paymentIntent.client_secret,
+        publishableKey: publishableKey, // ✅ KEY DELL'ACCOUNT ATTIVO
         accountUsed: activeAccount.label,
       },
       { status: 200 }
