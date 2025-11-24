@@ -175,10 +175,8 @@ export async function POST(req: NextRequest) {
       receipt_email: email || undefined,
       statement_descriptor_suffix: statementDescriptorSuffix,
       
-      automatic_payment_methods: {
-        enabled: true,
-        allow_redirects: "always",
-      },
+      // ✅ SOLO CARTE - rimosso automatic_payment_methods
+      payment_method_types: ['card'],
 
       shipping: shipping,
 
