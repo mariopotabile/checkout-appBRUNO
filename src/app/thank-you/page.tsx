@@ -111,7 +111,7 @@ function ThankYouContent() {
 
   const shopUrl = orderData?.shopDomain 
     ? `https://${orderData.shopDomain}`
-    : "https://imjsqk-my.myshopify.com"
+    : "https://notforresale.it"
 
   const formatMoney = (cents: number | undefined) => {
     const value = (cents ?? 0) / 100
