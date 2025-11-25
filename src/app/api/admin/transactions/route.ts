@@ -7,8 +7,16 @@ export async function GET(req: NextRequest) {
   try {
     // Verifica password
     const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${process.env.ADMIN_SECRET_KEY}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const password = authHeader?.replace('Bearer ', '')
+    
+    const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY
+    
+    if (!ADMIN_SECRET_KEY) {
+      return NextResponse.json({ error: 'Admin key non configurata' }, { status: 500 })
+    }
+    
+    if (password !== ADMIN_SECRET_KEY) {
+      return NextResponse.json({ error: 'Password errata' }, { status: 401 })
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '')

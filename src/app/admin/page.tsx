@@ -1,7 +1,7 @@
 // src/app/admin/page.tsx
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 type Transaction = {
   id: string
@@ -40,7 +40,8 @@ export default function AdminDashboard() {
       })
 
       if (!res.ok) {
-        throw new Error('Password errata')
+        const data = await res.json()
+        throw new Error(data.error || 'Errore caricamento')
       }
 
       const data = await res.json()
