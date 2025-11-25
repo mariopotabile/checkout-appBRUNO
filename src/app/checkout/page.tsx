@@ -83,6 +83,10 @@ function CheckoutInner({
     return 'https://imjsqk-my.myshopify.com/cart'
   }, [cart.shopDomain])
 
+  const totalItems = useMemo(() => {
+    return cart.items.reduce((sum, item) => sum + item.quantity, 0)
+  }, [cart.items])
+
   const [customer, setCustomer] = useState<CustomerForm>({
     fullName: "",
     email: "",
@@ -601,16 +605,48 @@ function CheckoutInner({
       `}</style>
 
       <div className="min-h-screen bg-[#fafafa]">
+        {/* ✅ HEADER CON LOGO E CARRELLO */}
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-4 py-4">
-            <div className="flex justify-center">
-              <a href={cartUrl}>
+            <div className="flex justify-between items-center">
+              {/* Logo */}
+              <a href={cartUrl} className="flex-shrink-0">
                 <img
                   src="https://cdn.shopify.com/s/files/1/0899/2188/0330/files/logo_checkify_d8a640c7-98fe-4943-85c6-5d1a633416cf.png?v=1761832152"
                   alt="Logo"
-                  className="h-12"
+                  className="h-10 sm:h-12"
                   style={{ maxWidth: '180px' }}
                 />
+              </a>
+
+              {/* Carrello icon con badge */}
+              <a 
+                href={cartUrl} 
+                className="relative flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                aria-label="Torna al carrello"
+              >
+                <div className="relative">
+                  <svg 
+                    className="w-6 h-6 sm:w-7 sm:h-7" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2} 
+                      d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" 
+                    />
+                  </svg>
+                  {/* Badge numero articoli */}
+                  {totalItems > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center font-semibold">
+                      {totalItems}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:inline text-sm font-medium">Carrello</span>
               </a>
             </div>
           </div>
@@ -902,7 +938,6 @@ function CheckoutInner({
                   </div>
                 </div>
 
-                {/* ✅ CHECKBOX INDIRIZZO FATTURAZIONE DIVERSO */}
                 <div className="flex items-start gap-2 p-4 bg-gray-50 rounded-md border border-gray-200">
                   <input 
                     type="checkbox" 
@@ -916,7 +951,6 @@ function CheckoutInner({
                   </label>
                 </div>
 
-                {/* ✅ FORM INDIRIZZO FATTURAZIONE (CONDIZIONALE) */}
                 {useDifferentBilling && (
                   <div className="shopify-section">
                     <h2 className="shopify-section-title">Fatturazione</h2>
