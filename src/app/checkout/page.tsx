@@ -392,44 +392,37 @@ function CheckoutInner({
     try {
       setLoading(true)
 
-      // Validazione Payment Element (es. numero carta mancante)
       const { error: submitError } = await elements.submit()
       if (submitError) {
         console.error("Errore submit elements:", submitError)
-        setError(submitError.message || "Errore nella validazione dei dati di pagamento")
+        setError(submitError.message || "Errore nella validazione")
         setLoading(false)
         return
       }
 
-      // Se l'utente NON usa un indirizzo di fatturazione diverso, usa quello della spedizione
-      const finalBilling = useDifferentBilling ? billingAddress : customer
+      const finalBillingAddress = useDifferentBilling ? billingAddress : customer
 
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
         clientSecret: clientSecret,
         confirmParams: {
-          // 🔥 Billing details COMPLETI → fondamentali per antifrode Stripe
+          return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
           payment_method_data: {
             billing_details: {
-              name: finalBilling.fullName,
-              email: customer.email, // email sempre quella principale
-              phone: finalBilling.phone || customer.phone || undefined,
+              name: finalBillingAddress.fullName,
+              email: customer.email,
+              phone: finalBillingAddress.phone || customer.phone || undefined,
               address: {
-                line1: finalBilling.address1,
-                line2: finalBilling.address2 || undefined,
-                city: finalBilling.city,
-                postal_code: finalBilling.postalCode,
-                state: finalBilling.province,
-                country: finalBilling.countryCode || "IT",
+                line1: finalBillingAddress.address1,
+                line2: finalBillingAddress.address2 || undefined,
+                city: finalBillingAddress.city,
+                postal_code: finalBillingAddress.postalCode,
+                state: finalBillingAddress.province,
+                country: finalBillingAddress.countryCode || "IT",
               },
             },
           },
-
-          // 🔥 Redirect finale di successo
-          return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
         },
-
-        // 🔥 Consigliato per PaymentElement → Stripe mostra 3DS solo se serve
         redirect: "if_required",
       })
 
@@ -440,15 +433,12 @@ function CheckoutInner({
         return
       }
 
-      // Se Stripe non ha generato errori → pagamento riuscito o in 3DS
       setSuccess(true)
       setLoading(false)
 
-      // In caso di redirect non eseguito automaticamente
       setTimeout(() => {
         window.location.href = `/thank-you?sessionId=${sessionId}`
-      }, 1500)
-
+      }, 2000)
     } catch (err: any) {
       console.error("Errore pagamento:", err)
       setError(err.message || "Errore imprevisto")
