@@ -3,6 +3,7 @@
 
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
+import Script from "next/script"
 
 type OrderData = {
   shopifyOrderNumber?: string
@@ -57,7 +58,7 @@ function ThankYouContent() {
         const shipping = data.shippingCents || 590
         const discount = subtotal > 0 && total > 0 ? subtotal - (total - shipping) : 0
 
-        setOrderData({
+        const processedOrderData = {
           shopifyOrderNumber: data.shopifyOrderNumber,
           shopifyOrderId: data.shopifyOrderId,
           email: data.customer?.email,
@@ -69,7 +70,9 @@ function ThankYouContent() {
           shopDomain: data.shopDomain,
           rawCart: data.rawCart,
           items: data.items || [],
-        })
+        }
+
+        setOrderData(processedOrderData)
 
         // ✅ TRACKING FACEBOOK PIXEL PURCHASE (CLIENT-SIDE)
         if (typeof window !== 'undefined' && (window as any).fbq) {
@@ -91,6 +94,43 @@ function ThankYouContent() {
 
           console.log('[ThankYou] ✅ Facebook Pixel inviato')
           console.log('[ThankYou] Event ID:', eventId)
+        }
+
+        // ✅ TRACKING GOOGLE ADS PURCHASE (CLIENT-SIDE)
+        const sendGoogleConversion = () => {
+          if (typeof window !== 'undefined' && (window as any).gtag) {
+            console.log('[ThankYou] 📊 Invio Google Ads Purchase...')
+            
+            const orderTotal = (total + shipping) / 100
+            const orderId = data.shopifyOrderNumber || data.shopifyOrderId || sessionId
+            
+            ;(window as any).gtag('event', 'conversion', {
+              'send_to': 'AW-17391033186/G-u0CLKyxbsbEOK22ORA',
+              'value': orderTotal,
+              'currency': data.currency || 'EUR',
+              'transaction_id': orderId
+            })
+
+            console.log('[ThankYou] ✅ Google Ads Purchase inviato')
+            console.log('[ThankYou] Order ID:', orderId)
+            console.log('[ThankYou] Value:', orderTotal, data.currency || 'EUR')
+          }
+        }
+
+        // Prova subito se gtag è già disponibile, altrimenti aspetta
+        if ((window as any).gtag) {
+          sendGoogleConversion()
+        } else {
+          // Aspetta che gtag sia pronto
+          const checkGtag = setInterval(() => {
+            if ((window as any).gtag) {
+              clearInterval(checkGtag)
+              sendGoogleConversion()
+            }
+          }, 100)
+
+          // Timeout dopo 5 secondi
+          setTimeout(() => clearInterval(checkGtag), 5000)
         }
 
         if (data.rawCart?.id || data.rawCart?.token) {
@@ -135,7 +175,7 @@ function ThankYouContent() {
 
   const shopUrl = orderData?.shopDomain 
     ? `https://${orderData.shopDomain}`
-    : "https://imjsqk-my.myshopify.com"
+    : "https://notforresale.it"
 
   const formatMoney = (cents: number | undefined) => {
     const value = (cents ?? 0) / 100
@@ -179,6 +219,25 @@ function ThankYouContent() {
 
   return (
     <>
+      {/* ✅ GOOGLE TAG (GTAG.JS) */}
+      <Script
+        src="https://www.googletagmanager.com/gtag/js?id=AW-17391033186"
+        strategy="afterInteractive"
+      />
+      <Script
+        id="google-ads-init"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-17391033186');
+            console.log('[ThankYou] ✅ Google Tag inizializzato');
+          `,
+        }}
+      />
+
       <style jsx global>{`
         * {
           box-sizing: border-box;
@@ -404,4 +463,3 @@ export default function ThankYouPage() {
     </Suspense>
   )
 }
-
