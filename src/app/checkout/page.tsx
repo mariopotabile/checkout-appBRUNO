@@ -1301,7 +1301,7 @@ function CheckoutInner({
                         options={{
                           fields: {
                             billingDetails: {
-                              name: 'auto',
+                             name: 'always' as any,
                               email: 'never',
                               phone: 'never',
                               address: 'never'
