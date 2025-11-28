@@ -117,7 +117,6 @@ function CheckoutInner({
   const [shippingError, setShippingError] = useState<string | null>(null)
   const [orderSummaryExpanded, setOrderSummaryExpanded] = useState(false)
 
-  // ✅ NUOVI STATI per ottimizzazione Payment Intent
   const [lastCalculatedHash, setLastCalculatedHash] = useState<string>("")
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -292,10 +291,8 @@ function CheckoutInner({
     return shippingValid && billingValid
   }
 
-  // ✅ LOGICA OTTIMIZZATA PAYMENT INTENT (evita 100+ PI duplicati)
   useEffect(() => {
     async function calculateShipping() {
-      // ✅ Crea hash univoco form per detectare cambiamenti reali
       const formHash = JSON.stringify({
         fullName: customer.fullName.trim(),
         email: customer.email.trim(),
@@ -319,13 +316,11 @@ function CheckoutInner({
         return
       }
 
-      // ✅ Se dati identici, NON ricreare PI (QUESTO è l'unico cambiamento)
       if (formHash === lastCalculatedHash && clientSecret) {
         console.log('[Checkout] 💾 Form invariato, riuso Payment Intent')
         return
       }
 
-      // ✅ Debounce: aspetta 1s dopo ultimo cambio
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
@@ -346,7 +341,6 @@ function CheckoutInner({
 
           console.log('[Checkout] 🆕 Creazione Payment Intent...')
 
-          // ✅ CHIAMATA API IDENTICA (nessun cambiamento qui)
           const piRes = await fetch("/api/payment-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -375,19 +369,18 @@ function CheckoutInner({
 
           console.log('[Checkout] ✅ ClientSecret ricevuto')
           setClientSecret(piData.clientSecret)
-          setLastCalculatedHash(formHash) // ✅ Salva hash per confronto futuro
+          setLastCalculatedHash(formHash)
           setIsCalculatingShipping(false)
         } catch (err: any) {
           console.error("Errore creazione payment:", err)
           setShippingError(err.message || "Errore nel calcolo del totale")
           setIsCalculatingShipping(false)
         }
-      }, 1000) // ✅ Aspetta 1 secondo
+      }, 1000)
     }
 
     calculateShipping()
 
-    // ✅ Cleanup timer
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
@@ -417,7 +410,7 @@ function CheckoutInner({
     lastCalculatedHash,
     discountCents,
   ])
-  // ✅ SUBMIT PAGAMENTO - COMPLETAMENTE INVARIATO
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
@@ -458,6 +451,7 @@ function CheckoutInner({
           return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
           payment_method_data: {
             billing_details: {
+              // name preso dal PaymentElement automaticamente
               email: customer.email,
               phone: finalBillingAddress.phone || customer.phone || undefined,
               address: {
@@ -493,7 +487,6 @@ function CheckoutInner({
       setLoading(false)
     }
   }
-
   return (
     <>
       <style jsx global>{`
@@ -512,14 +505,14 @@ function CheckoutInner({
 
         .shopify-input {
           width: 100%;
-          padding: 13px 12px;
+          padding: 14px 16px;
           font-size: 16px;
-          line-height: 1.4;
+          line-height: 1.5;
           color: #333333;
           background: #ffffff;
           border: 1px solid #d9d9d9;
-          border-radius: 5px;
-          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          border-radius: 10px;
+          transition: all 0.2s ease;
           -webkit-appearance: none;
           appearance: none;
         }
@@ -527,7 +520,7 @@ function CheckoutInner({
         .shopify-input:focus {
           outline: none;
           border-color: #2C6ECB;
-          box-shadow: 0 0 0 1px #2C6ECB;
+          box-shadow: 0 0 0 3px rgba(44, 110, 203, 0.1);
         }
 
         .shopify-input::placeholder {
@@ -536,8 +529,8 @@ function CheckoutInner({
 
         .shopify-label {
           display: block;
-          font-size: 13px;
-          font-weight: 400;
+          font-size: 14px;
+          font-weight: 500;
           color: #333333;
           margin-bottom: 8px;
         }
@@ -545,47 +538,56 @@ function CheckoutInner({
         .shopify-btn {
           width: 100%;
           padding: 18px 24px;
-          font-size: 16px;
+          font-size: 17px;
           font-weight: 600;
           color: #ffffff;
-          background: #2C6ECB;
+          background: linear-gradient(135deg, #2C6ECB 0%, #1f5bb8 100%);
           border: none;
-          border-radius: 5px;
+          border-radius: 12px;
           cursor: pointer;
-          transition: background 0.2s ease;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 12px rgba(44, 110, 203, 0.3);
           -webkit-appearance: none;
           appearance: none;
           touch-action: manipulation;
         }
 
         .shopify-btn:hover:not(:disabled) {
-          background: #1f5bb8;
+          background: linear-gradient(135deg, #1f5bb8 0%, #164a9e 100%);
+          box-shadow: 0 6px 16px rgba(44, 110, 203, 0.4);
+          transform: translateY(-2px);
+        }
+
+        .shopify-btn:active:not(:disabled) {
+          transform: translateY(0);
         }
 
         .shopify-btn:disabled {
           background: #d1d5db;
           cursor: not-allowed;
+          box-shadow: none;
         }
 
         .shopify-section {
           background: #ffffff;
-          border: 1px solid #e1e1e1;
-          border-radius: 8px;
-          padding: 20px;
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          padding: 24px;
           margin-bottom: 20px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
         .shopify-section-title {
-          font-size: 15px;
+          font-size: 18px;
           font-weight: 600;
-          color: #333333;
-          margin-bottom: 16px;
+          color: #111827;
+          margin-bottom: 20px;
         }
 
         .summary-toggle {
           background: #ffffff;
-          border: 1px solid #e1e1e1;
-          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
           padding: 16px;
           margin-bottom: 20px;
           cursor: pointer;
@@ -593,17 +595,19 @@ function CheckoutInner({
           justify-content: space-between;
           align-items: center;
           -webkit-tap-highlight-color: transparent;
+          transition: all 0.2s ease;
         }
 
         .summary-toggle:active {
-          background: #fafafa;
+          background: #f9fafb;
+          transform: scale(0.98);
         }
 
         .summary-content {
           background: #ffffff;
-          border: 1px solid #e1e1e1;
+          border: 1px solid #e5e7eb;
           border-top: none;
-          border-radius: 0 0 8px 8px;
+          border-radius: 0 0 12px 12px;
           padding: 16px;
           margin-top: -20px;
           margin-bottom: 20px;
@@ -612,7 +616,7 @@ function CheckoutInner({
         .pac-container {
           background-color: #ffffff !important;
           border: 1px solid #d9d9d9 !important;
-          border-radius: 5px !important;
+          border-radius: 10px !important;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
           margin-top: 4px !important;
           padding: 4px !important;
@@ -621,16 +625,16 @@ function CheckoutInner({
         }
 
         .pac-item {
-          padding: 10px 12px !important;
+          padding: 12px 16px !important;
           cursor: pointer !important;
           border: none !important;
-          border-radius: 4px !important;
+          border-radius: 8px !important;
           font-size: 14px !important;
           color: #333333 !important;
         }
 
         .pac-item:hover {
-          background-color: #f5f5f5 !important;
+          background-color: #f3f4f6 !important;
         }
 
         .pac-icon {
@@ -643,28 +647,117 @@ function CheckoutInner({
           }
           
           .shopify-btn {
-            min-height: 48px;
+            min-height: 52px;
+            font-size: 16px;
+          }
+
+          .shopify-section {
+            padding: 20px;
+            border-radius: 12px;
           }
         }
       `}</style>
 
-      <div className="min-h-screen bg-[#fafafa]">
-        <header className="bg-white border-b border-gray-200">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+        {/* ✅ HEADER PREMIUM CON TRUST */}
+        <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
           <div className="max-w-6xl mx-auto px-4 py-4">
-            <div className="flex justify-center">
-              <a href={cartUrl}>
+            <div className="flex justify-between items-center">
+              <a href={cartUrl} className="flex items-center gap-2">
                 <img
                   src="https://cdn.shopify.com/s/files/1/0899/2188/0330/files/logo_checkify_d8a640c7-98fe-4943-85c6-5d1a633416cf.png?v=1761832152"
                   alt="Logo"
-                  className="h-12"
-                  style={{ maxWidth: '180px' }}
+                  className="h-10"
+                  style={{ maxWidth: '160px' }}
                 />
               </a>
+
+              {/* Desktop Trust */}
+              <div className="hidden md:flex items-center gap-6">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="font-medium">SSL Sicuro</span>
+                </div>
+
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-200">
+                  <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs font-semibold text-emerald-700">Pagamento Protetto</span>
+                </div>
+              </div>
+
+              {/* Mobile Trust */}
+              <div className="md:hidden flex items-center gap-2 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200">
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs font-semibold text-emerald-700">Sicuro</span>
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="max-w-2xl mx-auto px-4 py-6 lg:hidden">
+        {/* ✅ TRUST BANNER */}
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 rounded-2xl p-4 md:p-5 border border-blue-100 shadow-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm rounded-xl px-3 py-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 leading-tight">Pagamenti</p>
+                  <p className="text-xs text-gray-600 leading-tight">100% Sicuri</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm rounded-xl px-3 py-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                    <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 leading-tight">Spedizione</p>
+                  <p className="text-xs text-gray-600 leading-tight">24/48 ore</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm rounded-xl px-3 py-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 leading-tight">Reso Facile</p>
+                  <p className="text-xs text-gray-600 leading-tight">Entro 14 gg</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm rounded-xl px-3 py-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 leading-tight">Supporto</p>
+                  <p className="text-xs text-gray-600 leading-tight">7 giorni/7</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Summary Toggle */}
+        <div className="max-w-2xl mx-auto px-4 lg:hidden">
           <div
             className="summary-toggle"
             onClick={() => setOrderSummaryExpanded(!orderSummaryExpanded)}
@@ -699,9 +792,9 @@ function CheckoutInner({
                         <img
                           src={item.image}
                           alt={item.title}
-                          className="w-16 h-16 object-cover rounded border border-gray-200"
+                          className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                         />
-                        <span className="absolute -top-2 -right-2 bg-gray-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                        <span className="absolute -top-2 -right-2 bg-gray-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium shadow-sm">
                           {item.quantity}
                         </span>
                       </div>
@@ -747,7 +840,7 @@ function CheckoutInner({
         </div>
 
         <div className="max-w-6xl mx-auto px-4 pb-8">
-          <div className="lg:grid lg:grid-cols-2 lg:gap-16">
+          <div className="lg:grid lg:grid-cols-2 lg:gap-12">
             
             <div>
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -756,24 +849,24 @@ function CheckoutInner({
                   <h2 className="shopify-section-title">Contatti</h2>
                   
                   <div>
-                    <label className="shopify-label">Email o numero di telefono cellulare</label>
+                    <label className="shopify-label">Email</label>
                     <input
                       type="email"
                       name="email"
                       value={customer.email}
                       onChange={handleChange}
                       className="shopify-input"
-                      placeholder=""
+                      placeholder="mario.rossi@esempio.com"
                       required
                       autoComplete="email"
                     />
                   </div>
 
-                  <div className="flex items-start gap-2 mt-3">
+                  <div className="flex items-start gap-2 mt-4">
                     <input 
                       type="checkbox" 
                       id="emailUpdates" 
-                      className="w-4 h-4 mt-0.5 flex-shrink-0" 
+                      className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
                     />
                     <label htmlFor="emailUpdates" className="text-xs text-gray-600 leading-relaxed">
                       Inviami email con notizie e offerte
@@ -815,7 +908,7 @@ function CheckoutInner({
                             }))
                           }}
                           className="shopify-input"
-                          placeholder=""
+                          placeholder="Mario"
                           required
                           autoComplete="given-name"
                         />
@@ -834,7 +927,7 @@ function CheckoutInner({
                             }))
                           }}
                           className="shopify-input"
-                          placeholder=""
+                          placeholder="Rossi"
                           required
                           autoComplete="family-name"
                         />
@@ -846,7 +939,7 @@ function CheckoutInner({
                       <input
                         type="text"
                         className="shopify-input"
-                        placeholder=""
+                        placeholder="Nome azienda"
                         autoComplete="organization"
                       />
                     </div>
@@ -860,7 +953,7 @@ function CheckoutInner({
                         value={customer.address1}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder=""
+                        placeholder="Via Roma 123"
                         required
                         autoComplete="address-line1"
                       />
@@ -874,7 +967,7 @@ function CheckoutInner({
                         value={customer.address2}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder=""
+                        placeholder="Scala B, Piano 3"
                         autoComplete="address-line2"
                       />
                     </div>
@@ -888,7 +981,7 @@ function CheckoutInner({
                           value={customer.postalCode}
                           onChange={handleChange}
                           className="shopify-input"
-                          placeholder=""
+                          placeholder="00100"
                           required
                           autoComplete="postal-code"
                         />
@@ -902,7 +995,7 @@ function CheckoutInner({
                           value={customer.city}
                           onChange={handleChange}
                           className="shopify-input"
-                          placeholder=""
+                          placeholder="Roma"
                           required
                           autoComplete="address-level2"
                         />
@@ -917,7 +1010,7 @@ function CheckoutInner({
                         value={customer.province}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder=""
+                        placeholder="RM"
                         required
                         autoComplete="address-level1"
                       />
@@ -931,7 +1024,7 @@ function CheckoutInner({
                         value={customer.phone}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder=""
+                        placeholder="+39 123 456 7890"
                         required
                         autoComplete="tel"
                       />
@@ -941,7 +1034,7 @@ function CheckoutInner({
                       <input 
                         type="checkbox" 
                         id="saveInfo" 
-                        className="w-4 h-4 mt-0.5 flex-shrink-0" 
+                        className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
                       />
                       <label htmlFor="saveInfo" className="text-xs text-gray-600 leading-relaxed">
                         Salva questi dati per la prossima volta
@@ -950,15 +1043,15 @@ function CheckoutInner({
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2 p-4 bg-gray-50 rounded-md border border-gray-200">
+                <div className="flex items-start gap-2 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
                   <input 
                     type="checkbox" 
                     id="differentBilling" 
                     checked={useDifferentBilling}
                     onChange={(e) => setUseDifferentBilling(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 flex-shrink-0" 
+                    className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
                   />
-                  <label htmlFor="differentBilling" className="text-sm text-gray-700 leading-relaxed cursor-pointer">
+                  <label htmlFor="differentBilling" className="text-sm text-gray-700 leading-relaxed cursor-pointer font-medium">
                     Usa un indirizzo di fatturazione diverso
                   </label>
                 </div>
@@ -1077,68 +1170,158 @@ function CheckoutInner({
                 )}
 
                 {isFormValid() && (
-                  <div className="shopify-section">
-                    <h2 className="shopify-section-title">Metodo di spedizione</h2>
-                    <div className="border border-gray-300 rounded-md p-4 flex justify-between items-center bg-gray-50">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Spedizione BRT Express</p>
-                        <p className="text-xs text-gray-500 mt-1">24/48h</p>
+                  <>
+                    <div className="shopify-section">
+                      <h2 className="shopify-section-title">Metodo di spedizione</h2>
+                      <div className="border border-gray-300 rounded-xl p-4 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Spedizione BRT Express</p>
+                          <p className="text-xs text-gray-600 mt-1">Consegna in 24/48 ore</p>
+                        </div>
+                        <span className="text-sm font-bold text-gray-900">€5,90</span>
                       </div>
-                      <span className="text-sm font-semibold text-gray-900">€5,90</span>
                     </div>
-                  </div>
+
+                    {/* ✅ SOCIAL PROOF */}
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-start gap-4">
+                        <div className="flex -space-x-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            M
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            L
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            A
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            2K+
+                          </div>
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-2xl">🎉</span>
+                            <p className="text-sm font-bold text-gray-900">
+                              Oltre 2.000+ clienti soddisfatti
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 mb-1">
+                            {[...Array(5)].map((_, i) => (
+                              <svg key={i} className="w-4 h-4 text-yellow-400 fill-current" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            ))}
+                            <span className="text-xs font-semibold text-gray-700 ml-1">4.9/5</span>
+                            <span className="text-xs text-gray-500">(1.847 recensioni)</span>
+                          </div>
+                          <p className="text-xs text-gray-600">
+                            ✓ Ultima vendita: <strong>3 minuti fa</strong>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <div className="shopify-section">
                   <h2 className="shopify-section-title">Pagamento</h2>
+                  
+                  {/* ✅ METODI PAGAMENTO */}
+                  <div className="mb-4 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-700">Metodi accettati:</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="h-8 px-3 bg-white border border-gray-300 rounded-lg flex items-center shadow-sm">
+                        <span className="text-xs font-bold text-[#1A1F71]">VISA</span>
+                      </div>
+                      <div className="h-8 px-3 bg-white border border-gray-300 rounded-lg flex items-center shadow-sm">
+                        <span className="text-xs font-bold text-[#EB001B]">●</span>
+                        <span className="text-xs font-bold text-[#FF5F00]">●</span>
+                      </div>
+                      <div className="h-8 px-3 bg-white border border-gray-300 rounded-lg flex items-center shadow-sm">
+                        <span className="text-xs font-bold text-[#006FCF]">AMEX</span>
+                      </div>
+                      <div className="h-8 px-3 bg-white border border-gray-300 rounded-lg flex items-center shadow-sm">
+                        <span className="text-[10px] font-bold">
+                          <span className="text-[#003087]">Pay</span>
+                          <span className="text-[#009cde]">Pal</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ✅ SICUREZZA ROW */}
+                  <div className="mb-4 flex items-center justify-center gap-4 text-xs text-gray-600 bg-blue-50 py-2.5 px-3 rounded-xl border border-blue-100">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span className="font-medium">SSL</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span className="font-medium">3D Secure</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                      <span className="font-medium">PCI DSS</span>
+                    </div>
+                  </div>
+
                   <p className="text-xs text-gray-600 mb-4">
-                    Tutte le transazioni sono sicure e crittografate.
+                    🔒 I tuoi dati non vengono mai memorizzati. Transazione protetta.
                   </p>
                   
                   {isCalculatingShipping && (
-                    <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md mb-4">
+                    <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl mb-4">
                       <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <p className="text-sm text-blue-800">Calcolo in corso...</p>
+                      <p className="text-sm text-blue-800 font-medium">Calcolo in corso...</p>
                     </div>
                   )}
 
                   {shippingError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl mb-4">
                       <p className="text-sm text-red-700">{shippingError}</p>
                     </div>
                   )}
 
                   {clientSecret && !isCalculatingShipping && (
-                    <div className="border border-gray-300 rounded-md p-4 bg-white">
+                    <div className="border border-gray-300 rounded-xl p-4 bg-white shadow-sm mb-4">
                       <PaymentElement 
-  options={{
-    fields: {
-      billingDetails: {
-        name: 'auto',  // ← CAMBIATO
-        email: 'never',
-        phone: 'never',
-        address: 'never'
-      }
-    },
-    defaultValues: {
-      billingDetails: {
-        // Pre-compila con nome billing o shipping
-        name: useDifferentBilling 
-          ? billingAddress.fullName 
-          : customer.fullName
-      }
-    }
-  }}
-/>
+                        options={{
+                          fields: {
+                            billingDetails: {
+                              name: 'auto',
+                              email: 'never',
+                              phone: 'never',
+                              address: 'never'
+                            }
+                          },
+                          defaultValues: {
+                            billingDetails: {
+                              name: useDifferentBilling 
+                                ? billingAddress.fullName 
+                                : customer.fullName
+                            }
+                          }
+                        }}
+                      />
                     </div>
                   )}
 
                   {!clientSecret && !isCalculatingShipping && (
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
-                      <p className="text-sm text-gray-600">
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                      <p className="text-sm text-gray-600 text-center">
                         Compila tutti i campi per visualizzare i metodi di pagamento
                       </p>
                     </div>
@@ -1146,23 +1329,23 @@ function CheckoutInner({
                 </div>
 
                 {error && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                  <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl">
                     <div className="flex items-start gap-3">
                       <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                       </svg>
-                      <p className="text-sm text-red-700">{error}</p>
+                      <p className="text-sm text-red-700 font-medium">{error}</p>
                     </div>
                   </div>
                 )}
 
                 {success && (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                  <div className="p-4 bg-green-50 border-2 border-green-200 rounded-xl">
                     <div className="flex items-start gap-3">
                       <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <p className="text-sm text-green-700">Pagamento completato! Reindirizzamento...</p>
+                      <p className="text-sm text-green-700 font-medium">Pagamento completato! Reindirizzamento...</p>
                     </div>
                   </div>
                 )}
@@ -1172,13 +1355,88 @@ function CheckoutInner({
                   disabled={loading || !stripe || !elements || !clientSecret || isCalculatingShipping}
                   className="shopify-btn"
                 >
-                  {loading ? "Elaborazione..." : "Paga ora"}
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Elaborazione...
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                      Paga in sicurezza
+                    </span>
+                  )}
                 </button>
+
+                {/* ✅ GARANZIE FINALI */}
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl border border-green-200">
+                    <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Garanzia Soddisfatti o Rimborsati</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        14 giorni per restituire il prodotto e ricevere un rimborso completo
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl border border-blue-200">
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                        <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Spedizione Tracciata con BRT</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        Tracking via email per monitorare il pacco in tempo reale
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-purple-50 rounded-xl border border-purple-200">
+                    <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Assistenza Clienti Dedicata</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        Team disponibile 7 giorni su 7 via email o chat
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-gray-500 flex items-center justify-center gap-1.5">
+                    <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                    <span>Crittografia SSL a 256-bit</span>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Powered by Stripe • PCI DSS Level 1 Certified
+                  </p>
+                </div>
+
               </form>
             </div>
 
+            {/* Desktop Summary Sidebar */}
             <div className="hidden lg:block">
-              <div className="sticky top-8">
+              <div className="sticky top-24">
                 <div className="shopify-section">
                   <h3 className="shopify-section-title">Riepilogo ordine</h3>
 
@@ -1190,47 +1448,47 @@ function CheckoutInner({
                             <img
                               src={item.image}
                               alt={item.title}
-                              className="w-16 h-16 object-cover rounded border border-gray-200"
+                              className="w-20 h-20 object-cover rounded-xl border border-gray-200"
                             />
-                            <span className="absolute -top-2 -right-2 bg-gray-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                            <span className="absolute -top-2 -right-2 bg-gray-700 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-semibold shadow-md">
                               {item.quantity}
                             </span>
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                          <p className="text-sm font-semibold text-gray-900">{item.title}</p>
                           {item.variantTitle && (
                             <p className="text-xs text-gray-500 mt-1">{item.variantTitle}</p>
                           )}
                         </div>
-                        <p className="text-sm font-medium text-gray-900 flex-shrink-0">
+                        <p className="text-sm font-semibold text-gray-900 flex-shrink-0">
                           {formatMoney(item.linePriceCents || item.priceCents || 0, currency)}
                         </p>
                       </div>
                     ))}
                   </div>
 
-                  <div className="border-t border-gray-200 pt-4 space-y-2 text-sm">
+                  <div className="border-t border-gray-200 pt-4 space-y-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Subtotale</span>
-                      <span className="text-gray-900">{formatMoney(subtotalCents, currency)}</span>
+                      <span className="text-gray-900 font-medium">{formatMoney(subtotalCents, currency)}</span>
                     </div>
 
                     {discountCents > 0 && (
                       <div className="flex justify-between text-green-600">
-                        <span>Sconto</span>
-                        <span>-{formatMoney(discountCents, currency)}</span>
+                        <span className="font-medium">Sconto</span>
+                        <span className="font-semibold">-{formatMoney(discountCents, currency)}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between">
                       <span className="text-gray-600">Spedizione</span>
-                      <span className="text-gray-900">{shippingCents > 0 ? formatMoney(shippingCents, currency) : "€5,90"}</span>
+                      <span className="text-gray-900 font-medium">{shippingCents > 0 ? formatMoney(shippingCents, currency) : "€5,90"}</span>
                     </div>
 
-                    <div className="flex justify-between text-lg font-semibold pt-4 border-t border-gray-200">
+                    <div className="flex justify-between text-lg font-bold pt-4 border-t border-gray-200">
                       <span>Totale</span>
-                      <span>{formatMoney(totalToPayCents, currency)}</span>
+                      <span className="text-xl">{formatMoney(totalToPayCents, currency)}</span>
                     </div>
                   </div>
                 </div>
@@ -1244,6 +1502,7 @@ function CheckoutInner({
   )
 }
 
+// Rest of the file (CheckoutPageContent, export default) remains exactly the same...
 function CheckoutPageContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("sessionId") || ""
@@ -1318,10 +1577,10 @@ function CheckoutPageContent() {
 
   if (loading || !stripePromise) {
     return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-4"></div>
-          <p className="text-sm text-gray-600">Caricamento del checkout…</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
+          <p className="text-sm text-gray-600 font-medium">Caricamento del checkout…</p>
         </div>
       </div>
     )
@@ -1329,12 +1588,12 @@ function CheckoutPageContent() {
 
   if (error || !cart) {
     return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4">
-        <div className="max-w-md text-center space-y-4 p-6 bg-white rounded-lg shadow-sm border border-gray-200">
-          <svg className="w-12 h-12 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center px-4">
+        <div className="max-w-md text-center space-y-4 p-8 bg-white rounded-2xl shadow-lg border border-gray-200">
+          <svg className="w-16 h-16 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <h1 className="text-lg font-semibold text-gray-900">Impossibile caricare il checkout</h1>
+          <h1 className="text-xl font-bold text-gray-900">Impossibile caricare il checkout</h1>
           <p className="text-sm text-gray-600">{error}</p>
           <p className="text-xs text-gray-500">
             Ritorna al sito e riprova ad aprire il checkout.
@@ -1358,7 +1617,7 @@ function CheckoutPageContent() {
         colorDanger: "#df1b41",
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         spacingUnit: '4px',
-        borderRadius: "5px",
+        borderRadius: "10px",
         fontSizeBase: '16px',
       },
     },
@@ -1375,10 +1634,10 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
           <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-4"></div>
-            <p className="text-sm text-gray-600">Caricamento…</p>
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
+            <p className="text-sm text-gray-600 font-medium">Caricamento…</p>
           </div>
         </div>
       }
@@ -1387,3 +1646,4 @@ export default function CheckoutPage() {
     </Suspense>
   )
 }
+
