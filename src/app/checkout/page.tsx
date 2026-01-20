@@ -1664,4 +1664,4 @@ export default function CheckoutPage() {
       <CheckoutPageContent />
     </Suspense>
   )
-}digit add .
+}
