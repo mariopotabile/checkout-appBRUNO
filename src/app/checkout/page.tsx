@@ -846,7 +846,7 @@ function CheckoutInner({
 
                 <div className="flex justify-between">
                   <span className="text-gray-600">Spedizione</span>
-                  <span className="text-gray-900">{shippingCents > 0 ? formatMoney(shippingCents, currency) : "Gratis"}</span>
+                  <span className="text-gray-900">{subtotalCents >= 5900 && calculatedShippingCents === 0 ? "Gratis" : (calculatedShippingCents > 0 ? formatMoney(calculatedShippingCents, currency) : formatMoney(590, currency))}</span>
                 </div>
 
                 <div className="flex justify-between text-base font-semibold pt-3 border-t border-gray-200">
