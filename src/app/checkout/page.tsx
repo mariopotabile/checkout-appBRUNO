@@ -80,7 +80,7 @@ function CheckoutInner({
     if (cart.shopDomain) {
       return `https://${cart.shopDomain}/cart`
     }
-    return 'https://notforresale.it/cart'
+    return 'https://paysafecheckout.com/cart'
   }, [cart.shopDomain])
 
   const [customer, setCustomer] = useState<CustomerForm>({
@@ -684,8 +684,8 @@ function CheckoutInner({
             <div className="flex justify-between items-center">
               <a href={cartUrl} className="flex items-center gap-2">
                 <img
-                  src="https://cdn.shopify.com/s/files/1/0899/2188/0330/files/logo_checkify_d8a640c7-98fe-4943-85c6-5d1a633416cf.png?v=1761832152"
-                  alt="Logo"
+                  src="/logo.png"
+                  alt="Checkout Sicuro"
                   className="h-10"
                   style={{ maxWidth: '160px' }}
                 />
