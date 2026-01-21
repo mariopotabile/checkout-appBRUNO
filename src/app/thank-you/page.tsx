@@ -53,19 +53,20 @@ function ThankYouContent() {
           throw new Error(data.error || "Errore caricamento ordine")
         }
 
+        // ✅ SPEDIZIONE SEMPRE GRATIS (0€)
         const subtotal = data.subtotalCents || 0
         const total = data.totalCents || 0
-        const shipping = data.shippingCents || 590
-        const discount = subtotal > 0 && total > 0 ? subtotal - (total - shipping) : 0
+        const shipping = 0  // ✅ SEMPRE GRATIS
+        const discount = subtotal > 0 && total > 0 ? subtotal - total : 0
 
         const processedOrderData = {
           shopifyOrderNumber: data.shopifyOrderNumber,
           shopifyOrderId: data.shopifyOrderId,
           email: data.customer?.email,
           subtotalCents: subtotal,
-          shippingCents: shipping,
+          shippingCents: shipping,  // ✅ 0€
           discountCents: discount > 0 ? discount : 0,
-          totalCents: total + shipping,
+          totalCents: total,  // ✅ Totale senza spedizione
           currency: data.currency || "EUR",
           shopDomain: data.shopDomain,
           rawCart: data.rawCart,
@@ -77,15 +78,15 @@ function ThankYouContent() {
         // ✅ TRACKING FACEBOOK PIXEL PURCHASE (CLIENT-SIDE)
         if (typeof window !== 'undefined' && (window as any).fbq) {
           console.log('[ThankYou] 📊 Invio Facebook Pixel Purchase...')
-          
+
           const contentIds = (data.items || [])
             .map((item: any) => String(item.id || item.variant_id))
             .filter(Boolean)
-          
+
           const eventId = data.paymentIntentId || sessionId
-          
+
           ;(window as any).fbq('track', 'Purchase', {
-            value: (total + shipping) / 100,
+            value: total / 100,  // ✅ Totale senza spedizione
             currency: data.currency || 'EUR',
             content_ids: contentIds,
             content_type: 'product',
@@ -100,10 +101,10 @@ function ThankYouContent() {
         const sendGoogleConversion = () => {
           if (typeof window !== 'undefined' && (window as any).gtag) {
             console.log('[ThankYou] 📊 Invio Google Ads Purchase...')
-            
-            const orderTotal = (total + shipping) / 100
+
+            const orderTotal = total / 100  // ✅ Totale senza spedizione
             const orderId = data.shopifyOrderNumber || data.shopifyOrderId || sessionId
-            
+
             ;(window as any).gtag('event', 'conversion', {
               'send_to': 'AW-17391033186/G-u0CLKyxbsbEOK22ORA',
               'value': orderTotal,
@@ -133,10 +134,11 @@ function ThankYouContent() {
           setTimeout(() => clearInterval(checkGtag), 5000)
         }
 
+        // ✅ SVUOTAMENTO CARRELLO SHOPIFY
         if (data.rawCart?.id || data.rawCart?.token) {
           const cartId = data.rawCart.id || `gid://shopify/Cart/${data.rawCart.token}`
           console.log('[ThankYou] 🧹 Avvio svuotamento carrello')
-          
+
           try {
             const clearRes = await fetch('/api/clear-cart', {
               method: 'POST',
@@ -173,9 +175,8 @@ function ThankYouContent() {
     loadOrderDataAndClearCart()
   }, [sessionId])
 
-  const shopUrl = orderData?.shopDomain 
-    ? `https://${orderData.shopDomain}`
-    : "https://notforresale.it"
+  // ✅ LINK FISSO A OLTREBOUTIQUE
+  const shopUrl = "https://oltreboutique.com"
 
   const formatMoney = (cents: number | undefined) => {
     const value = (cents ?? 0) / 100
@@ -254,13 +255,14 @@ function ThankYouContent() {
       `}</style>
 
       <div className="min-h-screen bg-[#fafafa]">
+        {/* ✅ HEADER CON LOGO NUOVO */}
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="flex justify-center">
               <a href={shopUrl}>
                 <img
-                  src="https://cdn.shopify.com/s/files/1/0899/2188/0330/files/logo_checkify_d8a640c7-98fe-4943-85c6-5d1a633416cf.png?v=1761832152"
-                  alt="Logo"
+                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/Progetto_senza_titolo_70.png?v=1768941482"
+                  alt="Oltre Boutique"
                   className="h-12"
                   style={{ maxWidth: '180px' }}
                 />
@@ -270,9 +272,11 @@ function ThankYouContent() {
         </header>
 
         <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
-          
+
+          {/* ✅ CARD CONFERMA ORDINE */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
-            
+
+            {/* Check Icon Verde */}
             <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto mb-6">
               <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -286,6 +290,7 @@ function ThankYouContent() {
               Grazie per il tuo acquisto!
             </p>
 
+            {/* Numero Ordine */}
             {orderData.shopifyOrderNumber && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
                 <p className="text-sm text-gray-600 mb-1">Numero ordine</p>
@@ -295,6 +300,7 @@ function ThankYouContent() {
               </div>
             )}
 
+            {/* Email Conferma */}
             {orderData.email && (
               <div className="border-t border-gray-200 pt-6 mb-6">
                 <div className="flex items-start gap-3">
@@ -311,6 +317,7 @@ function ThankYouContent() {
               </div>
             )}
 
+            {/* Lista Prodotti */}
             {orderData.items && orderData.items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 mb-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">
@@ -352,6 +359,7 @@ function ThankYouContent() {
               </div>
             )}
 
+            {/* Riepilogo Prezzi */}
             <div className="border-t border-gray-200 pt-6">
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -366,9 +374,15 @@ function ThankYouContent() {
                   </div>
                 )}
 
-                <div className="flex justify-between">
+                {/* ✅ SPEDIZIONE SEMPRE GRATIS */}
+                <div className="flex justify-between items-center">
                   <span className="text-gray-600">Spedizione</span>
-                  <span className="text-gray-900">{formatMoney(orderData.shippingCents)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 font-bold">GRATIS</span>
+                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
                 </div>
 
                 <div className="flex justify-between text-lg font-semibold pt-3 border-t border-gray-200">
@@ -379,6 +393,7 @@ function ThankYouContent() {
             </div>
           </div>
 
+          {/* Info Box */}
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 mb-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -402,6 +417,7 @@ function ThankYouContent() {
             </ul>
           </div>
 
+          {/* Bottoni */}
           <div className="space-y-3">
             <a
               href={shopUrl}
@@ -417,6 +433,7 @@ function ThankYouContent() {
             </a>
           </div>
 
+          {/* Link Supporto */}
           <div className="text-center mt-8 pt-6 border-t border-gray-200">
             <p className="text-sm text-gray-600 mb-2">
               Hai bisogno di aiuto?
@@ -429,6 +446,7 @@ function ThankYouContent() {
             </a>
           </div>
 
+          {/* Messaggio Carrello Svuotato */}
           {cartCleared && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
               <p className="text-xs text-green-800 text-center">
@@ -438,10 +456,11 @@ function ThankYouContent() {
           )}
         </div>
 
+        {/* Footer */}
         <footer className="border-t border-gray-200 py-6 mt-12">
           <div className="max-w-6xl mx-auto px-4 text-center">
             <p className="text-xs text-gray-500">
-              © 2025 Not For Resale. Tutti i diritti riservati.
+              © 2025 Oltre Boutique. Tutti i diritti riservati.
             </p>
           </div>
         </footer>
