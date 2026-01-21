@@ -72,6 +72,18 @@ export async function POST(req: NextRequest) {
 
     const cart: ShopifyCart = body.cart
 
+    // ✅ ESTRAI LO SHOP DOMAIN DALL'ORIGIN
+    let shopDomain = ""
+    if (origin) {
+      try {
+        const url = new URL(origin)
+        shopDomain = url.hostname
+        console.log('[cart-session] 🏪 Shop domain rilevato:', shopDomain)
+      } catch (e) {
+        console.warn('[cart-session] ⚠️ Errore parsing origin:', e)
+      }
+    }
+
     const items: CheckoutItem[] = Array.isArray(cart.items)
       ? cart.items.map(item => {
           const quantity = Number(item.quantity ?? 0)
@@ -145,6 +157,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       metadata: {
         sessionId,
+        shopDomain,
       },
     })
 
@@ -161,9 +174,10 @@ export async function POST(req: NextRequest) {
       totalCents,
       paymentIntentId: paymentIntent.id,
       paymentIntentClientSecret: paymentIntent.client_secret,
+      shopDomain,  // ✅ SALVATO NEL DATABASE
       rawCart: {
         ...cart,
-        id: cartId  // ✅ Aggiungi id costruito
+        id: cartId
       },
     }
 
@@ -177,6 +191,7 @@ export async function POST(req: NextRequest) {
         subtotalCents,
         shippingCents,
         totalCents,
+        shopDomain,  // ✅ RITORNATO AL FRONTEND
         paymentIntentClientSecret: paymentIntent.client_secret,
       }),
       {
@@ -271,7 +286,7 @@ export async function GET(req: NextRequest) {
         shopifyOrderNumber: data.shopifyOrderNumber,
         shopifyOrderId: data.shopifyOrderId,
         customer: data.customer,
-        shopDomain: data.shopDomain,
+        shopDomain: data.shopDomain || null,  // ✅ RITORNATO ANCHE IN GET
       }),
       {
         status: 200,
