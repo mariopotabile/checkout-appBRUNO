@@ -71,12 +71,10 @@ export async function POST(req: NextRequest) {
       console.log(`[stripe-webhook] 💰 Importo: €${(paymentIntent.amount / 100).toFixed(2)}`)
       console.log(`[stripe-webhook] 📋 Metadata:`, JSON.stringify(paymentIntent.metadata, null, 2))
 
-      // ✅ FIX: Supporta sia camelCase che snake_case
-      const sessionId = paymentIntent.metadata?.sessionId || paymentIntent.metadata?.session_id
+      const sessionId = paymentIntent.metadata?.session_id
 
       if (!sessionId) {
-        console.error("[stripe-webhook] ❌ NESSUN sessionId nei metadata!")
-        console.error("[stripe-webhook] Metadata ricevuti:", paymentIntent.metadata)
+        console.error("[stripe-webhook] ❌ NESSUN session_id nei metadata!")
         return NextResponse.json({ received: true, warning: "no_session_id" }, { status: 200 })
       }
 
@@ -157,7 +155,7 @@ export async function POST(req: NextRequest) {
 
         console.log("[stripe-webhook] 💾 Statistiche giornaliere aggiornate")
 
-        // ✅ INVIO META CONVERSIONS API
+        // ✅ INVIO META CONVERSIONS API (SERVER-SIDE TRACKING)
         await sendMetaPurchaseEvent({
           paymentIntent,
           sessionData,
@@ -224,11 +222,12 @@ async function sendMetaPurchaseEvent({
 
     const customer = sessionData.customer || {}
     
+    // ✅ HASH dati sensibili (requirement Meta)
     const hashData = (data: string) => {
       return data ? crypto.createHash('sha256').update(data.toLowerCase().trim()).digest('hex') : undefined
     }
 
-    const eventId = paymentIntent.id
+    const eventId = paymentIntent.id // ← Stesso ID del client per deduplication
     const eventTime = Math.floor(Date.now() / 1000)
 
     const userData: any = {
@@ -238,6 +237,7 @@ async function sendMetaPurchaseEvent({
       client_user_agent: req.headers.get('user-agent') || '',
     }
 
+    // ✅ DATI HASHED (obbligatori per match quality)
     if (customer.email) {
       userData.em = hashData(customer.email)
     }
@@ -260,6 +260,7 @@ async function sendMetaPurchaseEvent({
       userData.country = customer.countryCode.toLowerCase()
     }
 
+    // ✅ COOKIE Meta (se disponibili)
     if (paymentIntent.metadata?.fbp) {
       userData.fbp = paymentIntent.metadata.fbp
     }
@@ -267,6 +268,7 @@ async function sendMetaPurchaseEvent({
       userData.fbc = paymentIntent.metadata.fbc
     }
 
+    // ✅ CUSTOM DATA (parametri acquisto)
     const customData: any = {
       value: paymentIntent.amount / 100,
       currency: (paymentIntent.currency || 'EUR').toUpperCase(),
@@ -283,11 +285,12 @@ async function sendMetaPurchaseEvent({
       }))
     }
 
+    // ✅ PAYLOAD META CAPI
     const payload = {
       data: [{
         event_name: 'Purchase',
         event_time: eventTime,
-        event_id: eventId,
+        event_id: eventId, // ← DEDUPLICATION con client-side
         event_source_url: `https://paysafecheckout.com/thank-you?sessionId=${sessionId}`,
         action_source: 'website',
         user_data: userData,
@@ -298,6 +301,7 @@ async function sendMetaPurchaseEvent({
 
     console.log('[stripe-webhook] 📤 Payload Meta CAPI:', JSON.stringify(payload, null, 2))
 
+    // ✅ INVIO A META
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${pixelId}/events`,
       {
@@ -447,9 +451,9 @@ async function createShopifyOrder({
 
         shipping_lines: [
           {
-            title: "Spedizione Gratuita",
-            price: "0.00",
-            code: "FREE",
+            title: "Spedizione Standard",
+            price: "5.90",
+            code: "STANDARD",
           },
         ],
 
