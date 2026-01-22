@@ -1,4 +1,4 @@
-// src/app/api/webhooks/stripe/route.ts (CHECKOUT PAYSAFE)
+// src/app/api/webhooks/stripe/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { db } from "@/lib/firebaseAdmin"
@@ -71,10 +71,12 @@ export async function POST(req: NextRequest) {
       console.log(`[stripe-webhook] 💰 Importo: €${(paymentIntent.amount / 100).toFixed(2)}`)
       console.log(`[stripe-webhook] 📋 Metadata:`, JSON.stringify(paymentIntent.metadata, null, 2))
 
-      const sessionId = paymentIntent.metadata?.session_id
+      // ✅ FIX: Supporta sia camelCase che snake_case
+      const sessionId = paymentIntent.metadata?.sessionId || paymentIntent.metadata?.session_id
 
       if (!sessionId) {
-        console.error("[stripe-webhook] ❌ NESSUN session_id nei metadata!")
+        console.error("[stripe-webhook] ❌ NESSUN sessionId nei metadata!")
+        console.error("[stripe-webhook] Metadata ricevuti:", paymentIntent.metadata)
         return NextResponse.json({ received: true, warning: "no_session_id" }, { status: 200 })
       }
 
@@ -281,14 +283,12 @@ async function sendMetaPurchaseEvent({
       }))
     }
 
-    const shopDomain = sessionData.shopDomain || paymentIntent.metadata?.shopDomain || 'oltreboutique.com'
-
     const payload = {
       data: [{
         event_name: 'Purchase',
         event_time: eventTime,
         event_id: eventId,
-        event_source_url: `https://${shopDomain}/thank-you?sessionId=${sessionId}`,
+        event_source_url: `https://paysafecheckout.com/thank-you?sessionId=${sessionId}`,
         action_source: 'website',
         user_data: userData,
         custom_data: customData,
