@@ -340,14 +340,6 @@ function CheckoutInner({
 
           console.log('[Checkout] 🆕 Creazione Payment Intent...')
 
-          console.log('[Checkout] 🚀 Invio dati al payment-intent')
-          console.log('[Checkout] 👤 Dati cliente:', {
-            fullName: customer.fullName,
-            email: customer.email,
-            phone: customer.phone,
-            city: customer.city
-          })
-
           const piRes = await fetch("/api/payment-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -355,14 +347,14 @@ function CheckoutInner({
               sessionId,
               amountCents: newTotalCents,
               customer: {
-                fullName: customer.fullName.trim(),
-                email: customer.email.trim(),
-                phone: customer.phone.trim(),
-                address1: customer.address1.trim(),
-                address2: customer.address2.trim(),
-                city: customer.city.trim(),
-                postalCode: customer.postalCode.trim(),
-                province: customer.province.trim(),
+                fullName: customer.fullName,
+                email: customer.email,
+                phone: customer.phone,
+                address1: customer.address1,
+                address2: customer.address2,
+                city: customer.city,
+                postalCode: customer.postalCode,
+                province: customer.province,
                 countryCode: customer.countryCode || "IT",
               },
             }),
@@ -1222,7 +1214,7 @@ function CheckoutInner({
                           <p className="text-sm font-semibold text-gray-900">Spedizione BRT Express</p>
                           <p className="text-xs text-gray-600 mt-1">Consegna in 24/48 ore</p>
                         </div>
-                        <span className="text-sm font-bold text-gray-900">€5,90</span>
+                        <span className="text-lg font-bold text-green-600">GRATIS</span>
                       </div>
                     </div>
 
@@ -1527,7 +1519,7 @@ function CheckoutInner({
 
                     <div className="flex justify-between">
                       <span className="text-gray-600">Spedizione</span>
-                      <span className="text-gray-900 font-medium">{subtotalCents >= 5900 && calculatedShippingCents === 0 ? "Gratis" : (calculatedShippingCents > 0 ? formatMoney(calculatedShippingCents, currency) : formatMoney(590, currency))}</span>
+                      <span className="text-lg font-bold text-green-600">GRATIS</span>
                     </div>
 
                     <div className="flex justify-between text-lg font-bold pt-4 border-t border-gray-200">
