@@ -7,14 +7,10 @@ import crypto from "crypto"
 
 const COLLECTION = "cartSessions"
 
-// 🔥 FILTRO STORE - Solo pagamenti da questo checkout
-const THIS_STORE_SITE = "oltreboutique.com"
-
 export async function POST(req: NextRequest) {
   try {
     console.log("[stripe-webhook] ════════════════════════════════════")
     console.log("[stripe-webhook] 🔔 Webhook ricevuto:", new Date().toISOString())
-    console.log(`[stripe-webhook] 🏪 Questo webhook gestisce: ${THIS_STORE_SITE}`)
 
     const config = await getConfig()
     
@@ -74,32 +70,6 @@ export async function POST(req: NextRequest) {
       console.log(`[stripe-webhook] 💳 Payment Intent ID: ${paymentIntent.id}`)
       console.log(`[stripe-webhook] 💰 Importo: €${(paymentIntent.amount / 100).toFixed(2)}`)
       console.log(`[stripe-webhook] 📋 Metadata:`, JSON.stringify(paymentIntent.metadata, null, 2))
-
-      // 🔥 FILTRO STORE - Verifica se il pagamento è per QUESTO checkout
-      const merchantSite = paymentIntent.metadata?.merchant_site
-
-      console.log(`[stripe-webhook] 🔍 Store rilevato: ${merchantSite || 'N/A'}`)
-
-      // Normalizza URL per confronto (rimuovi https://, www., trailing slash)
-      const normalizedMerchantSite = merchantSite?.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') || ''
-      const normalizedThisStore = THIS_STORE_SITE.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
-
-      if (normalizedMerchantSite !== normalizedThisStore) {
-        console.log(`[stripe-webhook] ⏭️ SKIP: Pagamento da altro checkout`)
-        console.log(`[stripe-webhook]    Store pagamento: ${merchantSite}`)
-        console.log(`[stripe-webhook]    Store questo webhook: ${THIS_STORE_SITE}`)
-        console.log(`[stripe-webhook] ℹ️ Questo pagamento verrà gestito dall'altro webhook`)
-        
-        return NextResponse.json({ 
-          received: true, 
-          skipped: true,
-          reason: "different_store",
-          merchant_site: merchantSite,
-          expected_site: THIS_STORE_SITE
-        }, { status: 200 })
-      }
-
-      console.log(`[stripe-webhook] ✅ MATCH! Pagamento per ${THIS_STORE_SITE}, ELABORO`)
 
       const sessionId = paymentIntent.metadata?.session_id
 
@@ -311,12 +281,14 @@ async function sendMetaPurchaseEvent({
       }))
     }
 
+    const shopDomain = sessionData.shopDomain || paymentIntent.metadata?.shopDomain || 'oltreboutique.com'
+
     const payload = {
       data: [{
         event_name: 'Purchase',
         event_time: eventTime,
         event_id: eventId,
-        event_source_url: `https://${THIS_STORE_SITE}/thank-you?sessionId=${sessionId}`,
+        event_source_url: `https://${shopDomain}/thank-you?sessionId=${sessionId}`,
         action_source: 'website',
         user_data: userData,
         custom_data: customData,
@@ -475,7 +447,7 @@ async function createShopifyOrder({
 
         shipping_lines: [
           {
-            title: "Spedizione Standard",
+            title: "Spedizione Gratuita",
             price: "0.00",
             code: "FREE",
           },
