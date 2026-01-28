@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 import { getConfig } from "@/lib/config"
+import { getShopifyAccessToken } from "@/lib/shopifyAuth" // ✅ NUOVO IMPORT
 
 type CustomerPayload = {
   firstName: string
@@ -41,18 +42,35 @@ export async function POST(req: NextRequest) {
     // 1) Config da Firestore (Shopify)
     const cfg = await getConfig()
     const shopDomain = cfg.shopify?.shopDomain
-    const adminToken = cfg.shopify?.adminToken
+    const clientId = cfg.shopify?.clientId       // ✅ NUOVO
+    const clientSecret = cfg.shopify?.clientSecret // ✅ NUOVO
     const apiVersion = cfg.shopify?.apiVersion || "2024-10"
 
-    if (!shopDomain || !adminToken) {
+    if (!shopDomain || !clientId || !clientSecret) {
       console.error(
-        "[create-order] Config Shopify mancante. shopDomain/adminToken vuoti.",
+        "[create-order] ❌ Config Shopify mancante. shopDomain/clientId/clientSecret vuoti.",
       )
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Configurazione Shopify mancante. Completa l'onboarding con dominio e Admin API token.",
+            "Configurazione Shopify mancante. Completa l'onboarding con dominio, Client ID e Client Secret.",
+        },
+        { status: 500 },
+      )
+    }
+
+    // ✅ NUOVO: Ottieni token Admin API con OAuth (auto-refresh)
+    let adminToken: string
+    try {
+      adminToken = await getShopifyAccessToken(shopDomain, clientId, clientSecret)
+      console.log('[create-order] ✅ Token Admin ottenuto')
+    } catch (err: any) {
+      console.error('[create-order] ❌ Errore ottenimento token:', err.message)
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Impossibile ottenere token Shopify. Verifica Client ID e Secret.",
         },
         { status: 500 },
       )
@@ -101,14 +119,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 3) Costruiamo le line_items con prezzo "finale" (già scontato)
-    //    così l'ordine Shopify ha gli stessi totali di Stripe.
     const line_items = rawItems.map((item) => {
       const variantId =
         item.variant_id ?? item.id ?? item.product_id ?? undefined
       const quantity = Number(item.quantity || 1)
 
-      // final_line_price è in centesimi per la riga intera
-      // (già include eventuali sconti)
       const finalLineCents =
         typeof item.final_line_price === "number"
           ? item.final_line_price
@@ -125,9 +140,6 @@ export async function POST(req: NextRequest) {
       return {
         variant_id: variantId,
         quantity,
-        // Forziamo il prezzo unitario a quello scontato, così
-        // Shopify vede già il prezzo finale e l'ordine torna
-        // allineato a quanto incassato da Stripe.
         price: unitFinal.toFixed(2),
       }
     })
@@ -179,13 +191,13 @@ export async function POST(req: NextRequest) {
       },
     }
 
-    // 7) Chiamata a Shopify
+    // 7) Chiamata a Shopify (con token fresco)
     const url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json`
 
     const shopifyRes = await fetch(url, {
       method: "POST",
       headers: {
-        "X-Shopify-Access-Token": adminToken,
+        "X-Shopify-Access-Token": adminToken, // ✅ USA TOKEN FRESCO
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -195,7 +207,7 @@ export async function POST(req: NextRequest) {
     if (!shopifyRes.ok) {
       const txt = await shopifyRes.text()
       console.error(
-        "[create-order] Errore Shopify:",
+        "[create-order] ❌ Errore Shopify:",
         shopifyRes.status,
         txt,
       )
@@ -223,6 +235,8 @@ export async function POST(req: NextRequest) {
       { merge: true },
     )
 
+    console.log('[create-order] ✅ Ordine creato su Shopify:', order?.name)
+
     return NextResponse.json(
       {
         ok: true,
@@ -233,7 +247,7 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     )
   } catch (err: any) {
-    console.error("[create-order] Errore generale:", err)
+    console.error("[create-order] ❌ Errore generale:", err)
     return NextResponse.json(
       {
         ok: false,

@@ -75,7 +75,6 @@ export default function OnboardingPage() {
     setPassword('');
   };
 
-  // RESTO INVARIATO
   async function loadConfig() {
     setLoadingConfig(true);
     try {
@@ -101,12 +100,13 @@ export default function OnboardingPage() {
 
     const formData = new FormData(e.currentTarget);
 
+    // ✅ PAYLOAD AGGIORNATO CON CLIENT ID + SECRET
     const payload = {
       shopify: {
         shopDomain: (formData.get("shopifyDomain") as string) || existingConfig?.shopify?.shopDomain || "",
-        adminToken: (formData.get("shopifyAdminToken") as string) || existingConfig?.shopify?.adminToken || "",
-        storefrontToken:
-          (formData.get("shopifyStorefrontToken") as string) || existingConfig?.shopify?.storefrontToken || "",
+        clientId: (formData.get("shopifyClientId") as string) || existingConfig?.shopify?.clientId || "",
+        clientSecret: (formData.get("shopifyClientSecret") as string) || existingConfig?.shopify?.clientSecret || "",
+        storefrontToken: (formData.get("shopifyStorefrontToken") as string) || existingConfig?.shopify?.storefrontToken || "",
         apiVersion: "2024-10",
       },
 
@@ -231,7 +231,7 @@ export default function OnboardingPage() {
     );
   }
 
-  // ✅ DASHBOARD PRINCIPALE (TUTTO INVARIATO)
+  // ✅ DASHBOARD PRINCIPALE
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50 flex items-center justify-center px-4 py-10">
       <div className="max-w-6xl w-full space-y-8">
@@ -319,7 +319,7 @@ export default function OnboardingPage() {
         >
           {/* Colonna sinistra: Shopify + Stripe */}
           <div className="space-y-6">
-            {/* Shopify card */}
+            {/* ✅ SHOPIFY CARD - AGGIORNATA CON CLIENT ID + SECRET */}
             <section className="glass-card p-6 md:p-7 space-y-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -327,13 +327,13 @@ export default function OnboardingPage() {
                   <h2 className="text-lg font-semibold text-slate-50 flex items-center gap-2">
                     Shopify
                     <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/30">
-                      Live ready
+                      OAuth 2026
                     </span>
                   </h2>
                 </div>
                 <div className="text-right text-[11px] text-slate-400">
-                  <p>Usa app privata + Storefront API</p>
-                  <p>Scoped solo a ordini & prodotti</p>
+                  <p>Client Credentials OAuth</p>
+                  <p>Token auto-refresh 24h</p>
                 </div>
               </div>
 
@@ -343,22 +343,53 @@ export default function OnboardingPage() {
                   <input
                     name="shopifyDomain"
                     className="glass-input"
-                    placeholder="es. imjsqk-my.myshopify.com"
+                    placeholder="es. rx3ehh-wa.myshopify.com"
                     defaultValue={existingConfig?.shopify?.shopDomain || ""}
                     required
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    📍 Shopify Admin → barra URL in basso a sinistra
+                  </p>
                 </div>
 
                 <div>
-                  <label className="glass-label">Admin API Token</label>
+                  <label className="glass-label">
+                    Client ID 
+                    <span className="text-[10px] font-normal text-amber-400 ml-2">
+                      (Sostituisce Admin Token - aggiornato 2026)
+                    </span>
+                  </label>
                   <input
-                    name="shopifyAdminToken"
+                    name="shopifyClientId"
                     type={showSensitive ? "text" : "password"}
                     className="glass-input font-mono text-xs"
-                    placeholder="shpat_********"
-                    defaultValue={existingConfig?.shopify?.adminToken || ""}
+                    placeholder="es. e0591d3d9f4145d4d80c870b0e04865f"
+                    defaultValue={existingConfig?.shopify?.clientId || ""}
                     required
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    📍 Shopify Admin → Settings → Apps → Develop apps → [tua app] → Client ID
+                  </p>
+                </div>
+
+                <div>
+                  <label className="glass-label">
+                    Client Secret
+                    <span className="text-[10px] font-normal text-amber-400 ml-2">
+                      (Necessario per OAuth)
+                    </span>
+                  </label>
+                  <input
+                    name="shopifyClientSecret"
+                    type={showSensitive ? "text" : "password"}
+                    className="glass-input font-mono text-xs"
+                    placeholder="shpss_********"
+                    defaultValue={existingConfig?.shopify?.clientSecret || ""}
+                    required
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    📍 Shopify Admin → Settings → Apps → Develop apps → [tua app] → Client secret
+                  </p>
                 </div>
 
                 <div>
@@ -371,6 +402,19 @@ export default function OnboardingPage() {
                     defaultValue={existingConfig?.shopify?.storefrontToken || ""}
                     required
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    📍 Usato per leggere i prodotti/carrelli dal frontend
+                  </p>
+                </div>
+
+                {/* ✅ INFO BOX GENNAIO 2026 */}
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-3">
+                  <p className="text-[11px] text-amber-200 font-medium mb-2">
+                    ℹ️ Novità gennaio 2026
+                  </p>
+                  <p className="text-[10px] text-slate-300">
+                    Shopify non fornisce più token Admin permanenti. Usa <strong>Client ID + Secret</strong> per generare token temporanei (24h) che vengono auto-refreshati dal backend.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -390,7 +434,7 @@ export default function OnboardingPage() {
               </div>
             </section>
 
-            {/* Stripe accounts card */}
+            {/* Stripe accounts card - INVARIATO */}
             <section className="glass-card p-6 md:p-7 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -556,7 +600,7 @@ export default function OnboardingPage() {
             </section>
           </div>
 
-          {/* Colonna destra: Firebase + azioni */}
+          {/* Colonna destra: Firebase + azioni - INVARIATO */}
           <aside className="space-y-4">
             {/* Firebase info */}
             <section className="glass-card p-5 md:p-6 space-y-3">
@@ -650,3 +694,4 @@ export default function OnboardingPage() {
     </main>
   );
 }
+

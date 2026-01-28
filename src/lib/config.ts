@@ -3,7 +3,8 @@ import { db } from "./firebaseAdmin"
 
 export interface ShopifyConfig {
   shopDomain: string
-  adminToken: string
+  clientId: string        // ✅ NUOVO: sostituisce adminToken
+  clientSecret: string    // ✅ NUOVO
   apiVersion: string
   storefrontToken?: string
 }
@@ -17,7 +18,6 @@ export interface StripeAccount {
   order?: number
   merchantSite?: string
   lastUsedAt?: number
-  // ✅ AGGIUNTA: Product titles dinamici
   productTitle1?: string
   productTitle2?: string
   productTitle3?: string
@@ -46,7 +46,8 @@ const defaultConfig: AppConfig = {
 
   shopify: {
     shopDomain: process.env.SHOPIFY_SHOP_DOMAIN || "",
-    adminToken: process.env.SHOPIFY_ADMIN_TOKEN || "",
+    clientId: process.env.SHOPIFY_CLIENT_ID || "",           // ✅ NUOVO
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET || "",   // ✅ NUOVO
     apiVersion: process.env.SHOPIFY_API_VERSION || "2024-10",
     storefrontToken: process.env.SHOPIFY_STOREFRONT_TOKEN || "",
   },
@@ -61,7 +62,6 @@ const defaultConfig: AppConfig = {
       order: 0,
       merchantSite: "",
       lastUsedAt: 0,
-      // ✅ AGGIUNTA: Default product titles vuoti
       productTitle1: "",
       productTitle2: "",
       productTitle3: "",
@@ -148,13 +148,12 @@ export async function getConfig(): Promise<AppConfig> {
 
   const shopify: ShopifyConfig = {
     shopDomain: data.shopify?.shopDomain || defaultConfig.shopify.shopDomain,
-    adminToken: data.shopify?.adminToken || defaultConfig.shopify.adminToken,
+    clientId: data.shopify?.clientId || defaultConfig.shopify.clientId,             // ✅ NUOVO
+    clientSecret: data.shopify?.clientSecret || defaultConfig.shopify.clientSecret, // ✅ NUOVO
     apiVersion: data.shopify?.apiVersion || defaultConfig.shopify.apiVersion,
-    storefrontToken:
-      data.shopify?.storefrontToken || defaultConfig.shopify.storefrontToken,
+    storefrontToken: data.shopify?.storefrontToken || defaultConfig.shopify.storefrontToken,
   }
 
-  // ✅ Normalizza stripeAccounts con TUTTI i campi (inclusi productTitle)
   const stripeAccounts: StripeAccount[] = (data.stripeAccounts ||
     defaultConfig.stripeAccounts
   ).map((acc: any, idx: number) => ({
@@ -166,7 +165,6 @@ export async function getConfig(): Promise<AppConfig> {
     order: typeof acc?.order === "number" ? acc.order : idx,
     merchantSite: acc?.merchantSite || "",
     lastUsedAt: acc?.lastUsedAt || 0,
-    // ✅ AGGIUNTA: Product titles
     productTitle1: acc?.productTitle1 || "",
     productTitle2: acc?.productTitle2 || "",
     productTitle3: acc?.productTitle3 || "",
@@ -189,8 +187,7 @@ export async function getConfig(): Promise<AppConfig> {
 
 export async function setConfig(newConfig: Partial<AppConfig>): Promise<void> {
   const ref = db.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID)
-  
-  // ✅ Assicura che stripeAccounts abbia tutti i campi prima di salvare
+
   if (newConfig.stripeAccounts) {
     newConfig.stripeAccounts = newConfig.stripeAccounts.map((acc: any, idx: number) => ({
       label: acc?.label || `Account ${idx + 1}`,
@@ -201,7 +198,6 @@ export async function setConfig(newConfig: Partial<AppConfig>): Promise<void> {
       order: typeof acc?.order === "number" ? acc.order : idx,
       merchantSite: acc?.merchantSite || "",
       lastUsedAt: acc?.lastUsedAt ?? 0,
-      // ✅ AGGIUNTA: Preserva product titles
       productTitle1: acc?.productTitle1 || "",
       productTitle2: acc?.productTitle2 || "",
       productTitle3: acc?.productTitle3 || "",
@@ -216,20 +212,14 @@ export async function setConfig(newConfig: Partial<AppConfig>): Promise<void> {
   }
 
   await ref.set(newConfig, { merge: true })
-  
+
   console.log("[setConfig] ✓ Config salvata su Firebase")
 }
 
-/**
- * Helper: restituisce il primo account Stripe attivo.
- * Se non ce n'è nessuno, torna il primo con secretKey non vuota,
- * altrimenti il primo a caso.
- */
 export async function getActiveStripeAccount(): Promise<StripeAccount | null> {
   const cfg = await getConfig()
   if (!cfg.stripeAccounts?.length) return null
 
-  // Cerca account attivo con secretKey
   const active = cfg.stripeAccounts.find(
     a => a.active && a.secretKey && a.publishableKey
   )
@@ -238,7 +228,6 @@ export async function getActiveStripeAccount(): Promise<StripeAccount | null> {
     return active
   }
 
-  // Fallback: primo con secretKey
   const withKey = cfg.stripeAccounts.find(
     a => a.secretKey && a.publishableKey
   )
