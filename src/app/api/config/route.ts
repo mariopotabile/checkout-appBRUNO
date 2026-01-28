@@ -52,10 +52,11 @@ export async function POST(req: NextRequest) {
     console.log("[config POST] ✓ Payload ricevuto")
     console.log("[config POST] 📦 StripeAccounts ricevuti:", body.stripeAccounts?.length || 0)
 
-    // ✅ Shopify Config
+    // ✅ Shopify Config - AGGIORNATO CON CLIENT ID E SECRET
     const shopify: ShopifyConfig = {
       shopDomain: (body.shopify?.shopDomain || body.shopifyDomain || "").trim(),
-      adminToken: (body.shopify?.adminToken || body.shopifyAdminToken || "").trim(),
+      clientId: (body.shopify?.clientId || body.shopifyClientId || "").trim(),
+      clientSecret: (body.shopify?.clientSecret || body.shopifyClientSecret || "").trim(),
       apiVersion: (body.shopify?.apiVersion || "2024-10").trim(),
       storefrontToken: (body.shopify?.storefrontToken || body.shopifyStorefrontToken || "").trim(),
     }
@@ -154,3 +155,4 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+
