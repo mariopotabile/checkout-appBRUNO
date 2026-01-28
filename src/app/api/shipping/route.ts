@@ -46,14 +46,15 @@ export async function POST(req: NextRequest) {
       process.env.SHOPIFY_SHOP_DOMAIN ||
       ""
 
-    const adminToken =
-      cfg.shopify.adminToken || process.env.SHOPIFY_ADMIN_TOKEN || ""
+    // ✅ AGGIORNATO: clientId e clientSecret (pronti per OAuth quando servirà)
+    const clientId = cfg.shopify.clientId || process.env.SHOPIFY_CLIENT_ID || ""
+    const clientSecret = cfg.shopify.clientSecret || process.env.SHOPIFY_CLIENT_SECRET || ""
 
     const apiVersion =
       cfg.shopify.apiVersion || process.env.SHOPIFY_API_VERSION || "2024-10"
 
-    // (per ora non usiamo ancora domain/adminToken/apiVersion,
-    //  ma sono pronti quando facciamo la chiamata vera a Shopify)
+    // (per ora non usiamo ancora domain/clientId/clientSecret/apiVersion,
+    //  ma sono pronti quando facciamo la chiamata vera a Shopify con OAuth)
 
     // ✅ valuta: usa quella passata o default da config
     const usedCurrency =
