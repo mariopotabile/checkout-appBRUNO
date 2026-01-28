@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { db } from "@/lib/firebaseAdmin"
 import { getConfig } from "@/lib/config"
+import { getShopifyAccessToken } from "@/lib/shopifyAuth" // ✅ NUOVO IMPORT
 import crypto from "crypto"
 
 const COLLECTION = "cartSessions"
@@ -322,6 +323,7 @@ async function sendMetaPurchaseEvent({
   }
 }
 
+// ✅ FUNZIONE FIXATA CON OAUTH
 async function createShopifyOrder({
   sessionId,
   sessionData,
@@ -330,15 +332,28 @@ async function createShopifyOrder({
   stripeAccountLabel,
 }: any) {
   try {
+    // ✅ NUOVO: Usa OAuth invece di token fisso
     const shopifyDomain = config.shopify?.shopDomain
-    const adminToken = config.shopify?.adminToken
+    const clientId = config.shopify?.clientId
+    const clientSecret = config.shopify?.clientSecret
 
     console.log("[createShopifyOrder] 🔍 Config Shopify:")
     console.log("[createShopifyOrder]    Domain:", shopifyDomain || "❌ MANCANTE")
-    console.log("[createShopifyOrder]    Token:", adminToken ? "✅ Presente" : "❌ MANCANTE")
+    console.log("[createShopifyOrder]    Client ID:", clientId ? "✅ Presente" : "❌ MANCANTE")
+    console.log("[createShopifyOrder]    Client Secret:", clientSecret ? "✅ Presente" : "❌ MANCANTE")
 
-    if (!shopifyDomain || !adminToken) {
-      console.error("[createShopifyOrder] ❌ Config Shopify mancante")
+    if (!shopifyDomain || !clientId || !clientSecret) {
+      console.error("[createShopifyOrder] ❌ Config Shopify OAuth mancante")
+      return { orderId: null, orderNumber: null }
+    }
+
+    // ✅ NUOVO: Ottieni token fresco con auto-refresh
+    let adminToken: string
+    try {
+      adminToken = await getShopifyAccessToken(shopifyDomain, clientId, clientSecret)
+      console.log("[createShopifyOrder] ✅ Token Admin OAuth ottenuto")
+    } catch (err: any) {
+      console.error("[createShopifyOrder] ❌ Errore ottenimento token OAuth:", err.message)
       return { orderId: null, orderNumber: null }
     }
 
@@ -478,13 +493,14 @@ async function createShopifyOrder({
 
     console.log("[createShopifyOrder] 📤 Invio a Shopify API...")
 
+    // ✅ USA TOKEN FRESCO OAUTH
     const response = await fetch(
       `https://${shopifyDomain}/admin/api/2024-10/orders.json`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Shopify-Access-Token": adminToken,
+          "X-Shopify-Access-Token": adminToken, // ✅ Token OAuth fresco
         },
         body: JSON.stringify(orderPayload),
       }
