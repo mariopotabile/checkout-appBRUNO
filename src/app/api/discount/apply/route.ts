@@ -1,6 +1,7 @@
 // src/app/api/discount/apply/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { getConfig } from "@/lib/config"
+import { getShopifyAccessToken } from "@/lib/shopifyAuth"
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,8 +18,14 @@ export async function POST(req: NextRequest) {
 
     const cfg = await getConfig()
     const shopDomain = cfg.shopify?.shopDomain
-    const adminToken = cfg.shopify?.adminToken
     const apiVersion = cfg.shopify?.apiVersion || "2024-10"
+
+    // ✅ USA IL NUOVO SISTEMA OAUTH
+    const adminToken = await getShopifyAccessToken(
+      cfg.shopify.clientId,
+      cfg.shopify.clientSecret,
+      cfg.shopify.shopDomain
+    )
 
     if (!shopDomain || !adminToken) {
       console.error(
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
         ? location
         : `https://${shopDomain}${location}`
 
-      // Proviamo a estrarre il price_rule_id dall’URL
+      // Proviamo a estrarre il price_rule_id dall'URL
       const m = followUrl.match(/price_rules\/(\d+)\/discount_codes\/(\d+)/)
       if (m) {
         priceRuleId = m[1]
@@ -126,12 +133,12 @@ export async function POST(req: NextRequest) {
       discountCode =
         followJson?.discount_code || followJson?.discountCode || null
 
-      // se nel JSON c’è price_rule_id, lo usiamo; altrimenti teniamo quello estratto dall’URL
+      // se nel JSON c'è price_rule_id, lo usiamo; altrimenti teniamo quello estratto dall'URL
       if (discountCode?.price_rule_id) {
         priceRuleId = discountCode.price_rule_id
       }
     } else if (lookupRes.ok) {
-      // Scenario “vecchio”: Shopify risponde 200 con il discount_code direttamente
+      // Scenario "vecchio": Shopify risponde 200 con il discount_code direttamente
       const lookupJson = await lookupRes.json().catch((e) => {
         console.error("[discount lookup json] error:", e)
         return null
