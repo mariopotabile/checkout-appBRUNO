@@ -370,7 +370,7 @@ export default function DashboardPage() {
     
     const interval = setInterval(() => {
       loadData(true)
-    }, 30000)
+    }, 900000) // 15 minuti - riduce chiamate Firebase
     
     return () => clearInterval(interval)
   }, [autoRefresh, dateRange, compareRange, showComparison, data])
