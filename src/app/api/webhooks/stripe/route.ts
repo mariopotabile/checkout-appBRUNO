@@ -1,4 +1,3 @@
-
 // src/app/api/webhooks/stripe/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
@@ -6,6 +5,7 @@ import { db } from "@/lib/firebaseAdmin"
 import { getConfig } from "@/lib/config"
 import { getShopifyAccessToken } from "@/lib/shopifyAuth"
 import crypto from "crypto"
+import { sendFacebookPurchaseEvent } from "@/lib/facebook-capi" // ✅ AGGIUNTO
 
 const COLLECTION = "cartSessions"
 
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
             const data = statsDoc.data()!
             const accountStats = data.accounts?.[matchedAccount.label] || { totalCents: 0, transactionCount: 0 }
             const accountKey = matchedAccount.label
-
+            
             transaction.update(statsRef, {
               [`accounts.${accountKey}.totalCents`]: accountStats.totalCents + paymentIntent.amount,
               [`accounts.${accountKey}.transactionCount`]: accountStats.transactionCount + 1,
@@ -231,6 +231,7 @@ export async function POST(req: NextRequest) {
 
         console.log("[stripe-webhook] 💾 Statistiche giornaliere aggiornate")
 
+        // ✅ INVIO FACEBOOK CAPI (NUOVA IMPLEMENTAZIONE)
         await sendMetaPurchaseEvent({
           paymentIntent,
           sessionData,
@@ -269,6 +270,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ✅ FACEBOOK CONVERSIONS API - NUOVA IMPLEMENTAZIONE
+// ═══════════════════════════════════════════════════════════════
 async function sendMetaPurchaseEvent({
   paymentIntent,
   sessionData,
@@ -292,98 +296,88 @@ async function sendMetaPurchaseEvent({
     console.log('[stripe-webhook] 📊 Invio Meta Conversions API...')
 
     const customer = sessionData.customer || {}
+    const attributes = sessionData.rawCart?.attributes || {}
 
-    const hashData = (data: string) => {
-      return data ? crypto.createHash('sha256').update(data.toLowerCase().trim()).digest('hex') : undefined
-    }
+    // ✅ Estrai nome e cognome
+    const nameParts = (customer.fullName || "").trim().split(/\s+/)
+    const firstName = nameParts[0] || ""
+    const lastName = nameParts.slice(1).join(" ") || ""
 
-    const eventId = paymentIntent.id
-    const eventTime = Math.floor(Date.now() / 1000)
-
-    const userData: any = {
-      client_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 
-                         req.headers.get('x-real-ip') || 
-                         '0.0.0.0',
-      client_user_agent: req.headers.get('user-agent') || '',
-    }
-
-    if (customer.email) {
-      userData.em = hashData(customer.email)
-    }
-    if (customer.phone) {
-      const cleanPhone = customer.phone.replace(/\D/g, '')
-      userData.ph = hashData(cleanPhone)
-    }
-    if (customer.fullName) {
-      const nameParts = customer.fullName.split(' ')
-      if (nameParts[0]) userData.fn = hashData(nameParts[0])
-      if (nameParts[1]) userData.ln = hashData(nameParts.slice(1).join(' '))
-    }
-    if (customer.city) {
-      userData.ct = hashData(customer.city)
-    }
-    if (customer.postalCode) {
-      userData.zp = customer.postalCode.replace(/\s/g, '').toLowerCase()
-    }
-    if (customer.countryCode) {
-      userData.country = customer.countryCode.toLowerCase()
-    }
-
-    if (paymentIntent.metadata?.fbp) {
-      userData.fbp = paymentIntent.metadata.fbp
-    }
-    if (paymentIntent.metadata?.fbc) {
-      userData.fbc = paymentIntent.metadata.fbc
-    }
-
-    const customData: any = {
-      value: paymentIntent.amount / 100,
-      currency: (paymentIntent.currency || 'EUR').toUpperCase(),
-      content_type: 'product',
-    }
-
-    if (sessionData.items && sessionData.items.length > 0) {
-      customData.content_ids = sessionData.items.map((item: any) => String(item.id || item.variant_id))
-      customData.num_items = sessionData.items.length
-      customData.contents = sessionData.items.map((item: any) => ({
-        id: String(item.id || item.variant_id),
-        quantity: item.quantity || 1,
-        item_price: (item.priceCents || 0) / 100,
-      }))
-    }
-
-    const payload = {
-      data: [{
-        event_name: 'Purchase',
-        event_time: eventTime,
-        event_id: eventId,
-        event_source_url: `https://oltreboutique.com/thank-you?sessionId=${sessionId}`,
-        action_source: 'website',
-        user_data: userData,
-        custom_data: customData,
-      }],
-      access_token: accessToken,
-    }
-
-    console.log('[stripe-webhook] 📤 Payload Meta CAPI:', JSON.stringify(payload, null, 2))
-
-    const response = await fetch(
-      `https://graph.facebook.com/v18.0/${pixelId}/events`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
+    // ✅ Normalizza telefono
+    const phoneNormalized = normalizePhoneNumber(
+      customer.phone || "",
+      customer.countryCode || "IT"
     )
 
-    const result = await response.json()
+    // ✅ Costruisci fbc da fbclid se disponibile
+    let fbc = attributes._wt_last_fbclid 
+      ? `fb.1.${Date.now()}.${attributes._wt_last_fbclid}` 
+      : undefined
 
-    if (response.ok && result.events_received > 0) {
+    console.log('[stripe-webhook] 📍 Parametri tracking:')
+    console.log('[stripe-webhook]    Payment Intent:', paymentIntent.id)
+    console.log('[stripe-webhook]    _fbp:', attributes._fbp ? '✅' : '⚠️')
+    console.log('[stripe-webhook]    _fbc:', fbc ? '✅' : '⚠️')
+    console.log('[stripe-webhook]    UTM Campaign:', attributes._wt_last_campaign || 'direct')
+
+    // ✅ CHIAMA LA FUNZIONE FACEBOOK CAPI
+    const result = await sendFacebookPurchaseEvent({
+      // Dati cliente
+      email: customer.email || "",
+      phone: phoneNormalized,
+      firstName: firstName,
+      lastName: lastName,
+      city: customer.city || "",
+      postalCode: customer.postalCode || "",
+      country: customer.countryCode || "IT",
+      
+      // Dati ordine
+      orderValue: paymentIntent.amount, // già in cents
+      currency: (paymentIntent.currency || "EUR").toUpperCase(),
+      orderItems: (sessionData.items || []).map((item: any) => ({
+        id: String(item.id),
+        quantity: item.quantity || 1
+      })),
+      
+      // Event deduplication
+      eventId: paymentIntent.id,
+      
+      // URL e tracking
+      eventSourceUrl: `https://oltreboutique.com${attributes._wt_last_landing || '/'}`,
+      clientIp: req.headers.get('x-forwarded-for')?.split(',')[0] || 
+                req.headers.get('x-real-ip') || 
+                '0.0.0.0',
+      userAgent: req.headers.get('user-agent') || '',
+      
+      // ✅ Cookie Facebook
+      fbp: attributes._fbp,
+      fbc: fbc,
+      
+      // ✅ Last-click UTM
+      utm: {
+        source: attributes._wt_last_source,
+        medium: attributes._wt_last_medium,
+        campaign: attributes._wt_last_campaign,
+        content: attributes._wt_last_content,
+        term: attributes._wt_last_term,
+      },
+      
+      // ✅ First-click UTM
+      utmFirst: {
+        source: attributes._wt_first_source,
+        medium: attributes._wt_first_medium,
+        campaign: attributes._wt_first_campaign,
+        content: attributes._wt_first_content,
+        term: attributes._wt_first_term,
+      }
+    })
+
+    if (result.success) {
       console.log('[stripe-webhook] ✅ Meta CAPI Purchase inviato con successo')
-      console.log('[stripe-webhook] Event ID:', eventId)
-      console.log('[stripe-webhook] Events received:', result.events_received)
+      console.log('[stripe-webhook] 📊 Events received:', result.eventsReceived)
+      console.log('[stripe-webhook] 🎯 FBTRACE ID:', result.fbtraceId)
     } else {
-      console.error('[stripe-webhook] ❌ Errore Meta CAPI:', result)
+      console.error('[stripe-webhook] ❌ Errore Meta CAPI:', result.error)
     }
 
   } catch (error: any) {
@@ -680,3 +674,4 @@ async function clearShopifyCart(cartId: string, config: any) {
     console.error("[clearShopifyCart] ❌ Errore:", error.message)
   }
 }
+
