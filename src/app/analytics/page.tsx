@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react"
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts'
 
-// ✅ TYPES AGGIORNATI CON NUOVI CAMPI ADS
 type DashboardData = {
   totalPurchases: number
   totalRevenue: number
@@ -42,7 +41,6 @@ type DashboardData = {
     revenue: number
     orders: number
   }>
-  // ✅ NUOVO: Dettagli campagne con tutti i parametri ads
   byCampaignDetail: Array<{
     campaign: string
     source: string
@@ -129,7 +127,6 @@ export default function DashboardPage() {
     end: ''
   })
 
-  // ✅ CALCOLA KPI AVANZATI
   const calculateAdvancedKPIs = (data: DashboardData) => {
     if (!data) return null
 
@@ -163,7 +160,6 @@ export default function DashboardPage() {
     }
   }
 
-  // ✅ GENERA INSIGHTS AUTOMATICI
   const generateInsights = (data: DashboardData, kpis: any): Insight[] => {
     const insights: Insight[] = []
     if (!data || !kpis) return insights
@@ -346,7 +342,6 @@ export default function DashboardPage() {
       
       setData(json)
       
-      // ✅ Genera insights
       const kpis = calculateAdvancedKPIs(json)
       if (kpis) {
         const newInsights = generateInsights(json, kpis)
@@ -384,7 +379,6 @@ export default function DashboardPage() {
     setTimeout(() => setNotification(null), 4000)
   }
 
-  // ✅ EXPORT CSV AGGIORNATO CON NUOVI CAMPI ADS
   const exportCSV = () => {
     if (!data) return
     
@@ -509,7 +503,6 @@ export default function DashboardPage() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      {/* Notification */}
       {notification && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
@@ -519,7 +512,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b sticky top-0 z-40 backdrop-blur-sm bg-opacity-90`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -536,8 +528,7 @@ export default function DashboardPage() {
                 onClick={() => setAutoRefresh(!autoRefresh)}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
                   autoRefresh ? 'bg-green-600 text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
+                }`}>
                 {autoRefresh ? '⚡' : '⏸️'}
                 <span className="hidden sm:inline ml-1">{autoRefresh ? 'Auto' : 'Pausa'}</span>
               </button>
@@ -545,22 +536,19 @@ export default function DashboardPage() {
                 onClick={exportCSV}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
                   darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
+                }`}>
                 📥 <span className="hidden sm:inline">CSV</span>
               </button>
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
                   darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
+                }`}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
               <a
                 href="https://oltreboutique.com"
-                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs sm:text-sm font-medium"
-              >
+                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs sm:text-sm font-medium">
                 Vai al sito
               </a>
             </div>
@@ -570,9 +558,255 @@ export default function DashboardPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         
-        {/* Il resto del codice rimane identico... */}
-        {/* Per brevità non ripeto tutto qui, ma il codice continua con tutte le sezioni */}
-        
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg shadow-sm border p-4 sm:p-6 mb-6`}>
+          <h2 className="text-lg font-semibold mb-4">🔍 Filtri e Confronto</h2>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Filtri Rapidi</label>
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+              {[
+                { type: 'today', label: 'Oggi', icon: '📅' },
+                { type: 'yesterday', label: 'Ieri', icon: '📅' },
+                { type: '7days', label: '7gg', icon: '📊' },
+                { type: '14days', label: '14gg', icon: '📊' },
+                { type: '30days', label: '30gg', icon: '📊' },
+                { type: 'all', label: 'Tutto', icon: '∞' },
+              ].map((filter) => (
+                <button
+                  key={filter.type}
+                  onClick={() => applyQuickFilter(filter.type as any)}
+                  className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+                    darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}>
+                  <span className="hidden sm:inline">{filter.icon} </span>
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium mb-2">Periodo Principale</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
+                  className={`flex-1 px-3 py-2 border rounded-md text-sm ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                />
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
+                  className={`flex-1 px-3 py-2 border rounded-md text-sm ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                />
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">Periodo di Confronto</label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={showComparison}
+                    onChange={(e) => setShowComparison(e.target.checked)}
+                    className="rounded"
+                  />
+                  Abilita
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={compareRange.start}
+                  onChange={(e) => setCompareRange({...compareRange, start: e.target.value})}
+                  disabled={!showComparison}
+                  className={`flex-1 px-3 py-2 border rounded-md text-sm ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white disabled:opacity-50' : 'bg-white border-gray-300 text-gray-900 disabled:opacity-50'
+                  }`}
+                />
+                <input
+                  type="date"
+                  value={compareRange.end}
+                  onChange={(e) => setCompareRange({...compareRange, end: e.target.value})}
+                  disabled={!showComparison}
+                  className={`flex-1 px-3 py-2 border rounded-md text-sm ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white disabled:opacity-50' : 'bg-white border-gray-300 text-gray-900 disabled:opacity-50'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => loadData()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-medium">
+              Applica Filtri
+            </button>
+            <button
+              onClick={() => {
+                setDateRange({start: '', end: ''})
+                setCompareRange({start: '', end: ''})
+                setShowComparison(false)
+                setTimeout(() => loadData(), 100)
+              }}
+              className={`px-4 py-2 rounded-md transition text-sm font-medium ${
+                darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}>
+              Reset
+            </button>
+          </div>
+
+          {(dateRange.start || dateRange.end) && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
+                📅 Periodo: {dateRange.start || '∞'} → {dateRange.end || 'oggi'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {data.comparison && showComparison && (
+          <div className={`${darkMode ? 'bg-gradient-to-br from-blue-900 to-blue-800 border-blue-700' : 'bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200'} border rounded-lg p-6 mb-6 shadow-lg`}>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              📊 Confronto Periodi
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'} mb-1`}>Ordini</p>
+                <p className="text-2xl font-bold">{data.totalPurchases} vs {data.comparison.purchases}</p>
+                <p className={`text-sm mt-1 font-medium ${data.comparison.purchasesPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {data.comparison.purchasesPercent >= 0 ? '↑' : '↓'} {Math.abs(data.comparison.purchasesPercent).toFixed(1)}%
+                  <span className="ml-1">({data.comparison.purchasesDiff >= 0 ? '+' : ''}{data.comparison.purchasesDiff})</span>
+                </p>
+              </div>
+              <div>
+                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'} mb-1`}>Revenue</p>
+                <p className="text-2xl font-bold">{formatMoney(data.totalRevenue)}</p>
+                <p className="text-sm text-gray-500">vs {formatMoney(data.comparison.revenue)}</p>
+                <p className={`text-sm mt-1 font-medium ${data.comparison.revenuePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {data.comparison.revenuePercent >= 0 ? '↑' : '↓'} {Math.abs(data.comparison.revenuePercent).toFixed(1)}%
+                </p>
+              </div>
+              <div>
+                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'} mb-1`}>AOV</p>
+                <p className="text-2xl font-bold">{formatMoney(data.avgOrderValue)}</p>
+                <p className="text-sm text-gray-500">vs {formatMoney(data.comparison.avgOrderValue)}</p>
+                <p className={`text-sm mt-1 font-medium ${data.comparison.avgOrderDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {data.comparison.avgOrderDiff >= 0 ? '↑' : '↓'} {formatMoney(Math.abs(data.comparison.avgOrderDiff))}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {insights.length > 0 && (
+          <div className="mb-6 sm:mb-8">
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">💡 Insights e Suggerimenti</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              {insights.map((insight, idx) => (
+                <div 
+                  key={idx} 
+                  className={`${getInsightColor(insight.type)} border rounded-lg p-4`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl flex-shrink-0">{insight.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm sm:text-base mb-1">{insight.title}</h3>
+                      <p className="text-xs sm:text-sm mb-2 opacity-90">{insight.message}</p>
+                      {insight.action && (
+                        <p className="text-xs font-medium mt-2 pt-2 border-t border-current border-opacity-20">
+                          💡 {insight.action}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'} p-4 sm:p-6 rounded-xl shadow-lg border hover:shadow-xl transition-shadow`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ordini Totali</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{data.totalPurchases}</p>
+                <div className="mt-2">
+                  {data.comparison && renderTrend(data.totalPurchases, data.comparison.purchases)}
+                </div>
+              </div>
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'} p-4 sm:p-6 rounded-xl shadow-lg border hover:shadow-xl transition-shadow`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Revenue</p>
+                <p className="text-xl sm:text-2xl font-bold text-green-600 mt-2">{formatMoney(data.totalRevenue)}</p>
+                <div className="mt-2">
+                  {data.comparison && renderTrend(data.totalRevenue, data.comparison.revenue)}
+                </div>
+              </div>
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'} p-4 sm:p-6 rounded-xl shadow-lg border hover:shadow-xl transition-shadow`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>AOV</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{formatMoney(data.avgOrderValue)}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  {data.comparison && renderTrend(data.avgOrderValue, data.comparison.avgOrderValue)}
+                </div>
+              </div>
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'} p-4 sm:p-6 rounded-xl shadow-lg border hover:shadow-xl transition-shadow`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className={`text-xs sm:text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Repeat Rate</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-2">{kpis ? kpis.repeatRate.toFixed(0) : 0}%</p>
+                <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {data.uniqueCustomers} clienti unici
+                </p>
+              </div>
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center py-12">
+          <p className="text-gray-500">Dashboard operativa. Visualizzazione dati completa disponibile con ordini attivi.</p>
+        </div>
+
       </div>
     </div>
   )
