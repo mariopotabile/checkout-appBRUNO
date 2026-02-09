@@ -15,7 +15,12 @@ type OrderData = {
   totalCents?: number
   currency?: string
   shopDomain?: string
-  rawCart?: { id?: string; token?: string }
+  paymentIntentId?: string
+  rawCart?: { 
+    id?: string
+    token?: string
+    attributes?: Record<string, any>
+  }
   items?: Array<{
     id?: string
     variant_id?: string
@@ -26,6 +31,14 @@ type OrderData = {
     priceCents?: number
     linePriceCents?: number
   }>
+  customer?: {
+    email?: string
+    phone?: string
+    fullName?: string
+    city?: string
+    postalCode?: string
+    countryCode?: string
+  }
 }
 
 function ThankYouContent() {
@@ -53,11 +66,20 @@ function ThankYouContent() {
           throw new Error(data.error || "Errore caricamento ordine")
         }
 
+        console.log('[ThankYou] 📦 Dati carrello ricevuti:', data)
+        console.log('[ThankYou] 📦 RawCart attributes:', data.rawCart?.attributes)
+
         // ✅ SPEDIZIONE SEMPRE GRATIS (0€)
         const subtotal = data.subtotalCents || 0
         const total = data.totalCents || 0
         const shipping = 0  // ✅ SEMPRE GRATIS
         const discount = subtotal > 0 && total > 0 ? subtotal - total : 0
+
+        console.log('[ThankYou] 💰 Calcoli:')
+        console.log('  - Subtotal:', subtotal / 100, '€')
+        console.log('  - Discount:', discount / 100, '€')
+        console.log('  - Shipping:', shipping / 100, '€ (GRATIS)')
+        console.log('  - TOTAL:', total / 100, '€')
 
         const processedOrderData = {
           shopifyOrderNumber: data.shopifyOrderNumber,
@@ -69,35 +91,38 @@ function ThankYouContent() {
           totalCents: total,  // ✅ Totale senza spedizione
           currency: data.currency || "EUR",
           shopDomain: data.shopDomain,
+          paymentIntentId: data.paymentIntentId,
           rawCart: data.rawCart,
           items: data.items || [],
+          customer: data.customer,
         }
 
         setOrderData(processedOrderData)
 
-        // ✅ TRACKING FACEBOOK PIXEL PURCHASE (CLIENT-SIDE)
-        if (typeof window !== 'undefined' && (window as any).fbq) {
-          console.log('[ThankYou] 📊 Invio Facebook Pixel Purchase...')
-
-          const contentIds = (data.items || [])
-            .map((item: any) => String(item.id || item.variant_id))
-            .filter(Boolean)
-
-          const eventId = data.paymentIntentId || sessionId
-
-          ;(window as any).fbq('track', 'Purchase', {
-            value: total / 100,  // ✅ Totale senza spedizione
-            currency: data.currency || 'EUR',
-            content_ids: contentIds,
-            content_type: 'product',
-            num_items: (data.items || []).length,
-          }, { eventID: eventId })
-
-          console.log('[ThankYou] ✅ Facebook Pixel inviato')
-          console.log('[ThankYou] Event ID:', eventId)
+        // ═══════════════════════════════════════════════════════════
+        // ✅ FACEBOOK PIXEL - SOLO PAGEVIEW (Purchase gestito da webhook)
+        // ═══════════════════════════════════════════════════════════
+        
+        if (typeof window !== 'undefined') {
+          console.log('[ThankYou] 📊 Facebook Pixel PageView')
+          
+          if ((window as any).fbq) {
+            try {
+              ;(window as any).fbq('track', 'PageView')
+              console.log('[ThankYou] ✅ Facebook Pixel PageView inviato')
+              console.log('[ThankYou] ℹ️ Purchase già tracciato dal webhook Stripe con UTM completi')
+            } catch (err) {
+              console.error('[ThankYou] ⚠️ Facebook Pixel bloccato:', err)
+            }
+          } else {
+            console.log('[ThankYou] ⚠️ Facebook Pixel non disponibile (fbq non trovato)')
+          }
         }
 
-        // ✅ TRACKING GOOGLE ADS PURCHASE (CLIENT-SIDE)
+        // ═══════════════════════════════════════════════════════════
+        // ✅ GOOGLE ADS CONVERSION CON UTM
+        // ═══════════════════════════════════════════════════════════
+
         const sendGoogleConversion = () => {
           if (typeof window !== 'undefined' && (window as any).gtag) {
             console.log('[ThankYou] 📊 Invio Google Ads Purchase...')
@@ -105,16 +130,25 @@ function ThankYouContent() {
             const orderTotal = total / 100  // ✅ Totale senza spedizione
             const orderId = data.shopifyOrderNumber || data.shopifyOrderId || sessionId
 
+            const cartAttrs = data.rawCart?.attributes || {}
+
             ;(window as any).gtag('event', 'conversion', {
               'send_to': 'AW-17391033186/G-u0CLKyxbsbEOK22ORA',
               'value': orderTotal,
               'currency': data.currency || 'EUR',
-              'transaction_id': orderId
+              'transaction_id': orderId,
+              // ✅ UTM TRACKING
+              'utm_source': cartAttrs._wt_last_source || '',
+              'utm_medium': cartAttrs._wt_last_medium || '',
+              'utm_campaign': cartAttrs._wt_last_campaign || '',
+              'utm_content': cartAttrs._wt_last_content || '',
+              'utm_term': cartAttrs._wt_last_term || '',
             })
 
-            console.log('[ThankYou] ✅ Google Ads Purchase inviato')
+            console.log('[ThankYou] ✅ Google Ads Purchase inviato con UTM')
             console.log('[ThankYou] Order ID:', orderId)
             console.log('[ThankYou] Value:', orderTotal, data.currency || 'EUR')
+            console.log('[ThankYou] UTM Campaign:', cartAttrs._wt_last_campaign || 'direct')
           }
         }
 
@@ -122,19 +156,136 @@ function ThankYouContent() {
         if ((window as any).gtag) {
           sendGoogleConversion()
         } else {
-          // Aspetta che gtag sia pronto
           const checkGtag = setInterval(() => {
             if ((window as any).gtag) {
               clearInterval(checkGtag)
               sendGoogleConversion()
             }
           }, 100)
-
-          // Timeout dopo 5 secondi
           setTimeout(() => clearInterval(checkGtag), 5000)
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // ✅ FIREBASE ANALYTICS - VERSIONE COMPLETA CON PARAMETRI ADS
+        // ═══════════════════════════════════════════════════════════
+
+        const saveAnalytics = async () => {
+          try {
+            console.log('[ThankYou] 💾 Salvataggio analytics completi su Firebase...')
+            
+            const cartAttrs = data.rawCart?.attributes || {}
+            
+            // ✅ DATI COMPLETI PER ANALYTICS
+            const analyticsData = {
+              orderId: processedOrderData.shopifyOrderId || sessionId,
+              orderNumber: processedOrderData.shopifyOrderNumber || null,
+              sessionId: sessionId,
+              timestamp: new Date().toISOString(),
+              
+              // ✅ VALORI DETTAGLIATI
+              value: total / 100,
+              valueCents: total,
+              subtotalCents: subtotal,
+              shippingCents: shipping,  // 0€
+              discountCents: discount,
+              currency: data.currency || 'EUR',
+              itemCount: (data.items || []).length,
+              
+              // ✅ UTM LAST CLICK (con fbclid, gclid E PARAMETRI ADS)
+              utm: {
+                source: cartAttrs._wt_last_source || null,
+                medium: cartAttrs._wt_last_medium || null,
+                campaign: cartAttrs._wt_last_campaign || null,
+                content: cartAttrs._wt_last_content || null,
+                term: cartAttrs._wt_last_term || null,
+                fbclid: cartAttrs._wt_last_fbclid || null,
+                gclid: cartAttrs._wt_last_gclid || null,
+                // ✅ PARAMETRI ADS
+                campaign_id: cartAttrs._wt_last_campaign_id || null,
+                adset_id: cartAttrs._wt_last_adset_id || null,
+                adset_name: cartAttrs._wt_last_adset_name || null,
+                ad_id: cartAttrs._wt_last_ad_id || null,
+                ad_name: cartAttrs._wt_last_ad_name || null,
+              },
+              
+              // ✅ UTM FIRST CLICK (con referrer, landing page E PARAMETRI ADS)
+              utm_first: {
+                source: cartAttrs._wt_first_source || null,
+                medium: cartAttrs._wt_first_medium || null,
+                campaign: cartAttrs._wt_first_campaign || null,
+                content: cartAttrs._wt_first_content || null,
+                term: cartAttrs._wt_first_term || null,
+                referrer: cartAttrs._wt_first_referrer || null,
+                landing: cartAttrs._wt_first_landing || null,
+                fbclid: cartAttrs._wt_first_fbclid || null,
+                gclid: cartAttrs._wt_first_gclid || null,
+                // ✅ PARAMETRI ADS
+                campaign_id: cartAttrs._wt_first_campaign_id || null,
+                adset_id: cartAttrs._wt_first_adset_id || null,
+                adset_name: cartAttrs._wt_first_adset_name || null,
+                ad_id: cartAttrs._wt_first_ad_id || null,
+                ad_name: cartAttrs._wt_first_ad_name || null,
+              },
+              
+              // ✅ CUSTOMER COMPLETO
+              customer: {
+                email: processedOrderData.email || null,
+                fullName: data.customer?.fullName || null,
+                city: data.customer?.city || null,
+                postalCode: data.customer?.postalCode || null,
+                countryCode: data.customer?.countryCode || null,
+              },
+              
+              // ✅ ITEMS COMPLETI
+              items: (data.items || []).map((item: any) => ({
+                id: item.id || item.variant_id,
+                title: item.title,
+                quantity: item.quantity,
+                priceCents: item.priceCents || 0,
+                linePriceCents: item.linePriceCents || 0,
+                image: item.image || null,
+                variantTitle: item.variantTitle || null,
+              })),
+              
+              // ✅ SHOP DOMAIN
+              shopDomain: data.shopDomain || 'oltreboutique.com',
+            }
+
+            console.log('[ThankYou] 📊 Analytics payload:')
+            console.log('[ThankYou]    - Order:', analyticsData.orderNumber || 'pending')
+            console.log('[ThankYou]    - Value:', analyticsData.value, analyticsData.currency)
+            console.log('[ThankYou]    - Items:', analyticsData.itemCount)
+            console.log('[ThankYou]    - UTM Last Campaign:', analyticsData.utm.campaign || 'direct')
+            console.log('[ThankYou]    - UTM Last Campaign ID:', analyticsData.utm.campaign_id || 'N/A')
+            console.log('[ThankYou]    - UTM Last AdSet:', analyticsData.utm.adset_name || 'N/A')
+            console.log('[ThankYou]    - UTM Last Ad Name:', analyticsData.utm.ad_name || 'N/A')
+            console.log('[ThankYou]    - UTM First Campaign:', analyticsData.utm_first.campaign || 'direct')
+
+            // ✅ ENDPOINT API
+            const analyticsRes = await fetch('/api/analytics/purchase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(analyticsData)
+            })
+
+            if (analyticsRes.ok) {
+              const result = await analyticsRes.json()
+              console.log('[ThankYou] ✅ Analytics salvate su Firebase - ID:', result.id)
+            } else {
+              const errorData = await analyticsRes.json()
+              console.error('[ThankYou] ⚠️ Errore salvataggio analytics:', errorData)
+            }
+          } catch (err) {
+            console.error('[ThankYou] ⚠️ Errore chiamata analytics:', err)
+          }
+        }
+
+        saveAnalytics()
+
+        // ═══════════════════════════════════════════════════════════
         // ✅ SVUOTAMENTO CARRELLO SHOPIFY
+        // ═══════════════════════════════════════════════════════════
+
         if (data.rawCart?.id || data.rawCart?.token) {
           const cartId = data.rawCart.id || `gid://shopify/Cart/${data.rawCart.token}`
           console.log('[ThankYou] 🧹 Avvio svuotamento carrello')
@@ -220,6 +371,23 @@ function ThankYouContent() {
 
   return (
     <>
+      {/* ✅ FACEBOOK PIXEL INIT - Solo per PageView */}
+      <Script id="facebook-pixel" strategy="afterInteractive">
+        {`
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window, document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          
+          fbq('init', '${process.env.NEXT_PUBLIC_FB_PIXEL_ID}');
+          console.log('[ThankYou] ✅ Facebook Pixel inizializzato (PageView only)');
+        `}
+      </Script>
+
       {/* ✅ GOOGLE TAG (GTAG.JS) */}
       <Script
         src="https://www.googletagmanager.com/gtag/js?id=AW-17391033186"
@@ -255,7 +423,7 @@ function ThankYouContent() {
       `}</style>
 
       <div className="min-h-screen bg-[#fafafa]">
-        {/* ✅ HEADER CON LOGO NUOVO */}
+        {/* ✅ HEADER CON LOGO */}
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="flex justify-center">
@@ -460,7 +628,7 @@ function ThankYouContent() {
         <footer className="border-t border-gray-200 py-6 mt-12">
           <div className="max-w-6xl mx-auto px-4 text-center">
             <p className="text-xs text-gray-500">
-              © 2025 Oltre Boutique. Tutti i diritti riservati.
+              © 2026 Oltre Boutique. Tutti i diritti riservati.
             </p>
           </div>
         </footer>
@@ -482,3 +650,4 @@ export default function ThankYouPage() {
     </Suspense>
   )
 }
+
