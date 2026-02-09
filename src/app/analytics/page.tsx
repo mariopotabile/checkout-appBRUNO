@@ -967,10 +967,181 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* DETTAGLIO CAMPAGNE CON AD SET E AD NAME */}
+        {/* TABELLA DETTAGLIO CAMPAGNE - STILE PERFORMANCE */}
         {data.byCampaignDetail && data.byCampaignDetail.length > 0 && (
           <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg shadow-sm border p-4 sm:p-6 mb-6 sm:mb-8`}>
-            <h2 className="text-lg sm:text-xl font-semibold mb-4">🎯 Dettaglio Campagne e Ad Performance</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                  🎯 Dettaglio Campagne
+                </h2>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                  Performance dettagliata per campagna, ad set e creatività
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} sticky top-0`}>
+                  <tr>
+                    <th className="text-left p-3 rounded-tl-lg font-semibold">FONTE</th>
+                    <th className="text-left p-3 font-semibold">CAMPAGNA</th>
+                    <th className="text-left p-3 font-semibold">AD SET</th>
+                    <th className="text-left p-3 font-semibold">AD / CREATIVITÀ</th>
+                    <th className="text-center p-3 font-semibold">ORDINI</th>
+                    <th className="text-right p-3 font-semibold">REVENUE</th>
+                    <th className="text-right p-3 rounded-tr-lg font-semibold">AOV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.byCampaignDetail.map((campaign, campaignIdx) => {
+                    const adGroups = campaign.orders.reduce((acc: any, order) => {
+                      const key = `${order.adSet || 'No Ad Set'}_${order.adName || 'No Ad Name'}`
+                      if (!acc[key]) {
+                        acc[key] = {
+                          adSet: order.adSet || 'No Ad Set',
+                          adName: order.adName || 'No Ad Name',
+                          campaignId: order.campaignId,
+                          adsetId: order.adsetId,
+                          adId: order.adId,
+                          orders: [],
+                          totalRevenue: 0,
+                          totalOrders: 0
+                        }
+                      }
+                      acc[key].orders.push(order)
+                      acc[key].totalRevenue += order.value
+                      acc[key].totalOrders += 1
+                      return acc
+                    }, {})
+
+                    return Object.values(adGroups).map((group: any, groupIdx: number) => (
+                      <tr 
+                        key={`${campaignIdx}-${groupIdx}`}
+                        className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-750' : 'border-gray-200 hover:bg-gray-50'} transition`}
+                      >
+                        <td className="p-3">
+                          <span 
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white inline-block"
+                            style={{ backgroundColor: getSourceBadgeColor(campaign.source) }}
+                          >
+                            {campaign.source}
+                          </span>
+                        </td>
+
+                        <td className="p-3">
+                          <div>
+                            <p className="font-medium truncate max-w-xs">{campaign.campaign}</p>
+                            {campaign.medium && (
+                              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {campaign.medium}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                              <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                                <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd"/>
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{group.adSet}</p>
+                              {group.adsetId && (
+                                <p className={`text-xs font-mono ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  ID: {group.adsetId.slice(0, 12)}...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                              <svg className="w-4 h-4 text-purple-600 dark:text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd"/>
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{group.adName}</p>
+                              {group.adId && (
+                                <p className={`text-xs font-mono ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  ID: {group.adId.slice(0, 12)}...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center">
+                            <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-bold text-lg ${
+                              darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'
+                            }`}>
+                              {group.totalOrders}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="p-3 text-right">
+                          <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                            {formatMoney(group.totalRevenue)}
+                          </p>
+                        </td>
+
+                        <td className="p-3 text-right">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              {formatMoney(group.totalRevenue / group.totalOrders)}
+                            </p>
+                            <p className="text-xs text-gray-500">medio</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className={`mt-4 p-4 rounded-lg ${darkMode ? 'bg-gray-750' : 'bg-gray-50'}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <p className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>
+                    TOTALE CAMPAGNE
+                  </p>
+                  <p className="text-2xl font-bold text-blue-600">{data.byCampaignDetail.length}</p>
+                </div>
+                <div className="text-center">
+                  <p className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>
+                    TOTALE ORDINI
+                  </p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {data.byCampaignDetail.reduce((sum, c) => sum + c.totalOrders, 0)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>
+                    TOTALE REVENUE
+                  </p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {formatMoney(data.byCampaignDetail.reduce((sum, c) => sum + c.totalRevenue, 0))}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DETTAGLIO CAMPAGNE CON AD SET E AD NAME ESPANDIBILE */}
+        {data.byCampaignDetail && data.byCampaignDetail.length > 0 && (
+          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-lg shadow-sm border p-4 sm:p-6 mb-6 sm:mb-8`}>
+            <h2 className="text-lg sm:text-xl font-semibold mb-4">🎯 Ordini per Campagna (Espandi per dettagli)</h2>
             
             <div className="space-y-4">
               {data.byCampaignDetail.map((campaign, idx) => (
@@ -978,7 +1149,6 @@ export default function DashboardPage() {
                   key={idx}
                   className={`${darkMode ? 'bg-gray-750 border-gray-600' : 'bg-gray-50 border-gray-200'} border rounded-lg overflow-hidden`}
                 >
-                  {/* Header Campagna */}
                   <div 
                     onClick={() => toggleCampaign(campaign.campaign)}
                     className={`p-4 cursor-pointer hover:bg-opacity-80 transition ${
@@ -1018,7 +1188,6 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Dettaglio Ordini con Ad Set e Ad Name */}
                   {expandedCampaigns.has(campaign.campaign) && (
                     <div className={`border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                       <div className="p-4">
@@ -1039,7 +1208,6 @@ export default function DashboardPage() {
                                 <span className="text-sm font-bold text-green-600">{formatMoney(order.value)}</span>
                               </div>
                               
-                              {/* Parametri Ads */}
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 text-xs">
                                 {order.adName && (
                                   <div className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
@@ -1079,7 +1247,6 @@ export default function DashboardPage() {
                                 )}
                               </div>
 
-                              {/* Prodotti */}
                               {order.items && order.items.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
                                   <p className="text-xs font-semibold mb-1">Prodotti:</p>
