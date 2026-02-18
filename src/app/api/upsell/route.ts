@@ -40,7 +40,10 @@ export async function POST(req: NextRequest) {
 
     if (!upsellAmountCents || upsellAmountCents < 50) {
       return NextResponse.json(
-        { success: false, error: "Importo upsell non valido (min 50 centesimi)" },
+        {
+          success: false,
+          error: "Importo upsell non valido (minimo 50 centesimi)",
+        },
         { status: 400 }
       )
     }
@@ -55,32 +58,70 @@ export async function POST(req: NextRequest) {
     }
 
     const sessionData: any = snap.data() || {}
+    const currency = (sessionData.currency || "EUR").toString().toLowerCase()
 
-    // Stripe: customer + payment method salvati dal webhook
-    const stripeCustomerId = sessionData.stripeCustomerId as string | undefined
+    // Stripe account
+    const activeAccount = await getActiveStripeAccount()
+    const stripe = new Stripe(activeAccount.secretKey, {
+      apiVersion: "2025-10-29.clover",
+    })
+
+    // ========= Recupero metodo di pagamento + customer =========
     const stripePaymentMethodId = sessionData.stripePaymentMethodId as
       | string
       | undefined
+    let stripeCustomerId = sessionData.stripeCustomerId as string | undefined
 
-    if (!stripeCustomerId || !stripePaymentMethodId) {
+    if (!stripePaymentMethodId) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Nessun metodo di pagamento salvato. Non è possibile effettuare l'upsell.",
+          error: "Nessun metodo di pagamento salvato per upsell",
         },
         { status: 400 }
       )
     }
 
-    const currency = (sessionData.currency || "EUR").toString().toLowerCase()
-    const activeAccount = await getActiveStripeAccount()
+    // Se manca lo stripeCustomerId, prova a ricavarlo dal PaymentMethod
+    if (!stripeCustomerId) {
+      try {
+        console.log(
+          "[upsell] 🔍 Recupero customer dal payment method:",
+          stripePaymentMethodId
+        )
+        const pm = await stripe.paymentMethods.retrieve(stripePaymentMethodId) // [web:112]
 
-    const stripe = new Stripe(activeAccount.secretKey, {
-      apiVersion: "2025-10-29.clover",
-    })
+        if (pm.customer) {
+          stripeCustomerId = pm.customer as string
+          console.log("[upsell] ✅ Customer trovato:", stripeCustomerId)
+          await db.collection(COLLECTION).doc(sessionId).update({
+            stripeCustomerId,
+          })
+        } else {
+          console.log(
+            "[upsell] ⚠️ Payment method senza customer associato, impossibile procedere"
+          )
+        }
+      } catch (err: any) {
+        console.error(
+          "[upsell] ❌ Errore recupero payment method da Stripe:",
+          err.message
+        )
+      }
+    }
 
-    // Normalizza variantId
+    if (!stripeCustomerId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Nessun customer associato al metodo di pagamento per upsell. Non è possibile procedere.",
+        },
+        { status: 400 }
+      )
+    }
+
+    // ========= Normalizza variantId =========
     let variantId = variantIdRaw
     if (typeof variantId === "string") {
       if (variantId.includes("gid://")) {
@@ -96,7 +137,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ========== 1) PaymentIntent Stripe per upsell ==========
+    // ========= 1) PaymentIntent Stripe per upsell =========
     const description = `Upsell - Session ${sessionId} - Variant ${variantIdNum}`
 
     let upsellPaymentIntent: Stripe.PaymentIntent
@@ -116,15 +157,15 @@ export async function POST(req: NextRequest) {
           upsell_variant_id: String(variantIdNum),
           upsell_quantity: String(quantity),
         },
-      })
+      }) // [web:25][web:46]
     } catch (err: any) {
-      // Gestione base richiesta autenticazione / problemi carta
       if (err?.code === "authentication_required") {
         return NextResponse.json(
           {
             success: false,
             requiresAction: true,
-            message: "La banca richiede una nuova autenticazione (3DS) per l'upsell.",
+            message:
+              "La banca richiede una nuova autenticazione (3DS) per l'upsell.",
           },
           { status: 402 }
         )
@@ -152,7 +193,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ========== 2) Creazione Nuovo Ordine Shopify per upsell ==========
+    // ========= 2) Creazione Nuovo Ordine Shopify per upsell =========
     const config = await getConfig()
     const shopifyDomain = config.shopify?.shopDomain
     const clientId = config.shopify?.clientId
@@ -160,8 +201,7 @@ export async function POST(req: NextRequest) {
 
     if (!shopifyDomain || !clientId || !clientSecret) {
       console.error("[upsell] ❌ Config Shopify OAuth mancante per upsell")
-      // Pagamento Stripe è già andato a buon fine, ma non riusciamo a creare l'ordine Shopify.
-      // Lo segnaliamo ma non mettiamo in errore il pagamento.
+
       await db.collection(COLLECTION).doc(sessionId).update({
         upsellPaymentIntentId: upsellPaymentIntent.id,
         upsellAmountCents,
@@ -183,9 +223,16 @@ export async function POST(req: NextRequest) {
 
     let adminToken: string
     try {
-      adminToken = await getShopifyAccessToken(shopifyDomain, clientId, clientSecret)
+      adminToken = await getShopifyAccessToken(
+        shopifyDomain,
+        clientId,
+        clientSecret
+      )
     } catch (err: any) {
-      console.error("[upsell] ❌ Errore ottenimento token OAuth Shopify:", err?.message)
+      console.error(
+        "[upsell] ❌ Errore ottenimento token OAuth Shopify:",
+        err?.message
+      )
 
       await db.collection(COLLECTION).doc(sessionId).update({
         upsellPaymentIntentId: upsellPaymentIntent.id,
@@ -208,13 +255,13 @@ export async function POST(req: NextRequest) {
 
     const customer = sessionData.customer || {}
 
-    const nameParts = (customer.fullName || "Cliente Upsell").trim().split(/\s+/)
+    const nameParts = (customer.fullName || "Cliente Upsell")
+      .trim()
+      .split(/\s+/)
     const firstName = nameParts[0] || "Cliente"
     const lastName = nameParts.slice(1).join(" ") || "Upsell"
 
-    // Telefono: se hai già la normalizePhoneNumber puoi riusarla importandola da dove è definita
     const phone = customer.phone || ""
-
     const hasValidPhone = !!phone
 
     const customerData: any = {
@@ -222,7 +269,6 @@ export async function POST(req: NextRequest) {
       first_name: firstName,
       last_name: lastName,
     }
-
     if (hasValidPhone) {
       customerData.phone = phone
     }
@@ -237,7 +283,6 @@ export async function POST(req: NextRequest) {
       zip: customer.postalCode || "00000",
       country_code: (customer.countryCode || "IT").toUpperCase(),
     }
-
     if (hasValidPhone) {
       addressData.phone = phone
     }
@@ -246,7 +291,7 @@ export async function POST(req: NextRequest) {
       {
         variant_id: variantIdNum,
         quantity: quantity,
-        // facoltativo: se vuoi forzare il prezzo, lo puoi mettere come stringa
+        // Se vuoi forzare il prezzo, puoi decommentare:
         // price: (upsellAmountCents / 100).toFixed(2),
       },
     ]
@@ -289,7 +334,7 @@ export async function POST(req: NextRequest) {
         note: `Upsell order - Session: ${sessionId} - Payment Intent: ${upsellPaymentIntent.id}`,
         tags: `checkout-custom-upsell,stripe-upsell,${activeAccount.label},automated`,
       },
-    }
+    } // [web:87]
 
     const response = await fetch(
       `https://${shopifyDomain}/admin/api/2024-10/orders.json`,
@@ -330,7 +375,6 @@ export async function POST(req: NextRequest) {
     }
 
     const shopifyResult = JSON.parse(responseText)
-
     const upsellOrderId = shopifyResult.order?.id
     const upsellOrderNumber = shopifyResult.order?.order_number
 
