@@ -66,15 +66,12 @@ function formatMoney(cents: number | undefined, currency: string = "EUR") {
   }).format(value)
 }
 
-// ── MODIFICA 1: aggiunta prop onClientSecret ──────────────────────────────
 function CheckoutInner({
   cart,
   sessionId,
-  onClientSecret,
 }: {
   cart: CartSessionResponse
   sessionId: string
-  onClientSecret: (cs: string | null) => void
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -268,7 +265,7 @@ function CheckoutInner({
   }
 
   function isFormValid() {
-    const shippingValid =
+    const shippingValid = 
       customer.fullName.trim().length > 2 &&
       customer.email.trim().includes("@") &&
       customer.email.trim().length > 5 &&
@@ -312,7 +309,6 @@ function CheckoutInner({
       if (!isFormValid()) {
         setCalculatedShippingCents(0)
         setClientSecret(null)
-        onClientSecret(null)          // ── MODIFICA 2a
         setShippingError(null)
         setLastCalculatedHash("")
         return
@@ -371,7 +367,6 @@ function CheckoutInner({
 
           console.log('[Checkout] ✅ ClientSecret received')
           setClientSecret(piData.clientSecret)
-          onClientSecret(piData.clientSecret)  // ── MODIFICA 2b
           setLastCalculatedHash(formHash)
           setIsCalculatingShipping(false)
         } catch (err: any) {
@@ -450,13 +445,16 @@ function CheckoutInner({
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
         clientSecret,
+
         confirmParams: {
           return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
+
           payment_method_data: {
             billing_details: {
               name: finalBillingAddress.fullName || customer.fullName,
               email: customer.email,
               phone: finalBillingAddress.phone || customer.phone,
+
               address: {
                 line1: finalBillingAddress.address1,
                 line2: finalBillingAddress.address2 || undefined,
@@ -466,6 +464,7 @@ function CheckoutInner({
                 country: finalBillingAddress.countryCode || "GB",
               },
             },
+
             metadata: {
               session_id: sessionId,
               customer_fullName: customer.fullName,
@@ -477,6 +476,7 @@ function CheckoutInner({
             },
           },
         },
+
         redirect: "if_required",
       })
 
@@ -658,7 +658,7 @@ function CheckoutInner({
           .shopify-input {
             font-size: 16px !important;
           }
-
+          
           .shopify-btn {
             min-height: 52px;
             font-size: 16px;
@@ -685,6 +685,7 @@ function CheckoutInner({
                 />
               </a>
 
+              {/* Desktop Trust */}
               <div className="hidden md:flex items-center gap-6">
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -692,6 +693,7 @@ function CheckoutInner({
                   </svg>
                   <span className="font-medium">Secure SSL</span>
                 </div>
+
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-200">
                   <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -700,6 +702,7 @@ function CheckoutInner({
                 </div>
               </div>
 
+              {/* Mobile Trust */}
               <div className="md:hidden flex items-center gap-2 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200">
                 <svg className="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
@@ -771,16 +774,19 @@ function CheckoutInner({
                   <span className="text-gray-600">Subtotal</span>
                   <span className="text-gray-900">{formatMoney(subtotalCents, currency)}</span>
                 </div>
+
                 {discountCents > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span>Discount</span>
                     <span>-{formatMoney(discountCents, currency)}</span>
                   </div>
                 )}
+
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Shipping</span>
                   <span className="text-green-600 font-medium">FREE</span>
                 </div>
+
                 <div className="flex justify-between text-base font-semibold pt-3 border-t border-gray-200">
                   <span>Total</span>
                   <span className="text-lg">{formatMoney(totalToPayCents, currency)}</span>
@@ -792,12 +798,13 @@ function CheckoutInner({
 
         <div className="max-w-6xl mx-auto px-4 pb-8 mt-6">
           <div className="lg:grid lg:grid-cols-2 lg:gap-12">
-
+            
             <div>
               <form onSubmit={handleSubmit} className="space-y-5">
 
                 <div className="shopify-section">
                   <h2 className="shopify-section-title">Contact</h2>
+                  
                   <div>
                     <label className="shopify-label">Email</label>
                     <input
@@ -811,8 +818,13 @@ function CheckoutInner({
                       autoComplete="email"
                     />
                   </div>
+
                   <div className="flex items-start gap-2 mt-4">
-                    <input type="checkbox" id="emailUpdates" className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" />
+                    <input 
+                      type="checkbox" 
+                      id="emailUpdates" 
+                      className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
+                    />
                     <label htmlFor="emailUpdates" className="text-xs text-gray-600 leading-relaxed">
                       Email me with news and offers
                     </label>
@@ -821,6 +833,7 @@ function CheckoutInner({
 
                 <div className="shopify-section">
                   <h2 className="shopify-section-title">Delivery</h2>
+                  
                   <div className="space-y-4">
                     <div>
                       <label className="shopify-label">Country / Region</label>
@@ -864,6 +877,7 @@ function CheckoutInner({
                           autoComplete="given-name"
                         />
                       </div>
+
                       <div>
                         <label className="shopify-label">Last name</label>
                         <input
@@ -936,6 +950,7 @@ function CheckoutInner({
                           autoComplete="postal-code"
                         />
                       </div>
+
                       <div className="col-span-2">
                         <label className="shopify-label">City</label>
                         <input
@@ -980,7 +995,11 @@ function CheckoutInner({
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <input type="checkbox" id="saveInfo" className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" />
+                      <input 
+                        type="checkbox" 
+                        id="saveInfo" 
+                        className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
+                      />
                       <label htmlFor="saveInfo" className="text-xs text-gray-600 leading-relaxed">
                         Save this information for next time
                       </label>
@@ -989,12 +1008,12 @@ function CheckoutInner({
                 </div>
 
                 <div className="flex items-start gap-2 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
-                  <input
-                    type="checkbox"
-                    id="differentBilling"
+                  <input 
+                    type="checkbox" 
+                    id="differentBilling" 
                     checked={useDifferentBilling}
                     onChange={(e) => setUseDifferentBilling(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 flex-shrink-0 rounded"
+                    className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
                   />
                   <label htmlFor="differentBilling" className="text-sm text-gray-700 leading-relaxed cursor-pointer font-medium">
                     Use a different billing address
@@ -1004,6 +1023,7 @@ function CheckoutInner({
                 {useDifferentBilling && (
                   <div className="shopify-section">
                     <h2 className="shopify-section-title">Billing address</h2>
+                    
                     <div className="space-y-4">
                       <div>
                         <label className="shopify-label">Country / Region</label>
@@ -1043,6 +1063,7 @@ function CheckoutInner({
                             required
                           />
                         </div>
+
                         <div>
                           <label className="shopify-label">Last name</label>
                           <input
@@ -1092,6 +1113,7 @@ function CheckoutInner({
                             required
                           />
                         </div>
+
                         <div className="col-span-2">
                           <label className="shopify-label">City</label>
                           <input
@@ -1131,18 +1153,30 @@ function CheckoutInner({
                       </div>
                     </div>
 
+                    {/* SOCIAL PROOF */}
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-4 shadow-sm">
                       <div className="flex items-start gap-4">
                         <div className="flex -space-x-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">J</div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">M</div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">S</div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">2K+</div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            J
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            M
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            S
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
+                            2K+
+                          </div>
                         </div>
+
                         <div className="flex-1">
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="text-2xl">🎉</span>
-                            <p className="text-sm font-bold text-gray-900">Over 2,000+ happy customers</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              Over 2,000+ happy customers
+                            </p>
                           </div>
                           <div className="flex items-center gap-1 mb-1">
                             {[...Array(5)].map((_, i) => (
@@ -1153,7 +1187,9 @@ function CheckoutInner({
                             <span className="text-xs font-semibold text-gray-700 ml-1">4.9/5</span>
                             <span className="text-xs text-gray-500">(1,847 reviews)</span>
                           </div>
-                          <p className="text-xs text-gray-600">✓ Last order: <strong>3 minutes ago</strong></p>
+                          <p className="text-xs text-gray-600">
+                            ✓ Last order: <strong>3 minutes ago</strong>
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1162,7 +1198,8 @@ function CheckoutInner({
 
                 <div className="shopify-section">
                   <h2 className="shopify-section-title">Payment</h2>
-
+                  
+                  {/* PAYMENT METHODS */}
                   <div className="mb-4 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-gray-700">Accepted methods:</span>
@@ -1187,6 +1224,7 @@ function CheckoutInner({
                     </div>
                   </div>
 
+                  {/* SECURITY ROW */}
                   <div className="mb-4 flex items-center justify-center gap-4 text-xs text-gray-600 bg-blue-50 py-2.5 px-3 rounded-xl border border-blue-100">
                     <div className="flex items-center gap-1.5">
                       <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -1211,7 +1249,7 @@ function CheckoutInner({
                   <p className="text-xs text-gray-600 mb-4">
                     🔒 Your data is never stored. Protected transaction.
                   </p>
-
+                  
                   {isCalculatingShipping && (
                     <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl mb-4">
                       <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1230,7 +1268,7 @@ function CheckoutInner({
 
                   {clientSecret && !isCalculatingShipping && (
                     <div className="border border-gray-300 rounded-xl p-4 bg-white shadow-sm mb-4">
-                      <PaymentElement
+                      <PaymentElement 
                         options={{
                           fields: {
                             billingDetails: {
@@ -1242,8 +1280,8 @@ function CheckoutInner({
                           },
                           defaultValues: {
                             billingDetails: {
-                              name: useDifferentBilling
-                                ? billingAddress.fullName
+                              name: useDifferentBilling 
+                                ? billingAddress.fullName 
                                 : customer.fullName
                             }
                           }
@@ -1306,6 +1344,7 @@ function CheckoutInner({
                   )}
                 </button>
 
+                {/* FINAL GUARANTEES */}
                 <div className="mt-6 space-y-3">
                   <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl border border-green-200">
                     <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -1315,7 +1354,9 @@ function CheckoutInner({
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900 mb-0.5">Money-Back Guarantee</p>
-                      <p className="text-xs text-gray-600 leading-relaxed">14 days to return the product and receive a full refund</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        14 days to return the product and receive a full refund
+                      </p>
                     </div>
                   </div>
 
@@ -1328,7 +1369,9 @@ function CheckoutInner({
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900 mb-0.5">Tracked Shipping</p>
-                      <p className="text-xs text-gray-600 leading-relaxed">Tracking via email to monitor your package in real-time</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        Tracking via email to monitor your package in real-time
+                      </p>
                     </div>
                   </div>
 
@@ -1340,7 +1383,9 @@ function CheckoutInner({
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900 mb-0.5">Dedicated Customer Support</p>
-                      <p className="text-xs text-gray-600 leading-relaxed">Team available 7 days a week via email or chat</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        Team available 7 days a week via email or chat
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1365,6 +1410,7 @@ function CheckoutInner({
               <div className="sticky top-24">
                 <div className="shopify-section">
                   <h3 className="shopify-section-title">Order summary</h3>
+
                   <div className="space-y-4 mb-6">
                     {cart.items.map((item, idx) => (
                       <div key={idx} className="flex gap-3">
@@ -1398,16 +1444,19 @@ function CheckoutInner({
                       <span className="text-gray-600">Subtotal</span>
                       <span className="text-gray-900 font-medium">{formatMoney(subtotalCents, currency)}</span>
                     </div>
+
                     {discountCents > 0 && (
                       <div className="flex justify-between text-green-600">
                         <span className="font-medium">Discount</span>
                         <span className="font-semibold">-{formatMoney(discountCents, currency)}</span>
                       </div>
                     )}
+
                     <div className="flex justify-between">
                       <span className="text-gray-600">Shipping</span>
                       <span className="text-green-600 font-medium">FREE</span>
                     </div>
+
                     <div className="flex justify-between text-lg font-bold pt-4 border-t border-gray-200">
                       <span>Total</span>
                       <span className="text-xl">{formatMoney(totalToPayCents, currency)}</span>
@@ -1424,7 +1473,6 @@ function CheckoutInner({
   )
 }
 
-// ── MODIFICA 3+4: CheckoutPageContent con clientSecret state + key su Elements
 function CheckoutPageContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("sessionId") || ""
@@ -1433,7 +1481,6 @@ function CheckoutPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null)
-  const [clientSecret, setClientSecret] = useState<string | null>(null)  // ── MODIFICA 3
 
   useEffect(() => {
     async function load() {
@@ -1447,11 +1494,15 @@ function CheckoutPageContent() {
         setLoading(true)
         setError(null)
 
-        const res = await fetch(`/api/cart-session?sessionId=${encodeURIComponent(sessionId)}`)
+        const res = await fetch(
+          `/api/cart-session?sessionId=${encodeURIComponent(sessionId)}`,
+        )
         const data: CartSessionResponse & { error?: string } = await res.json()
 
         if (!res.ok || (data as any).error) {
-          setError(data.error || "Error retrieving cart. Please try again.")
+          setError(
+            data.error || "Error retrieving cart. Please try again.",
+          )
           setLoading(false)
           return
         }
@@ -1460,8 +1511,13 @@ function CheckoutPageContent() {
 
         try {
           const pkRes = await fetch('/api/stripe-status')
-          if (!pkRes.ok) throw new Error('stripe-status API unavailable')
+          
+          if (!pkRes.ok) {
+            throw new Error('stripe-status API unavailable')
+          }
+          
           const pkData = await pkRes.json()
+
           if (pkData.publishableKey) {
             console.log('[Checkout] ✅ Publishable key loaded')
             console.log('[Checkout] ✅ Account:', pkData.accountLabel)
@@ -1479,7 +1535,9 @@ function CheckoutPageContent() {
         setLoading(false)
       } catch (err: any) {
         console.error("Checkout error:", err)
-        setError(err?.message || "Unexpected error loading checkout.")
+        setError(
+          err?.message || "Unexpected error loading checkout.",
+        )
         setLoading(false)
       }
     }
@@ -1507,50 +1565,37 @@ function CheckoutPageContent() {
           </svg>
           <h1 className="text-xl font-bold text-gray-900">Unable to load checkout</h1>
           <p className="text-sm text-gray-600">{error}</p>
-          <p className="text-xs text-gray-500">Please return to the site and try opening checkout again.</p>
+          <p className="text-xs text-gray-500">
+            Please return to the site and try opening checkout again.
+          </p>
         </div>
       </div>
     )
   }
 
-  const appearance = {
-    theme: "stripe" as const,
-    variables: {
-      colorPrimary: "#2C6ECB",
-      colorBackground: "#ffffff",
-      colorText: "#333333",
-      colorDanger: "#df1b41",
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-      spacingUnit: '4px',
-      borderRadius: "10px",
-      fontSizeBase: '16px',
+  const options = {
+    mode: 'payment' as const,
+    amount: 1000,
+    currency: (cart.currency || 'eur').toLowerCase(),
+    paymentMethodTypes: ['card'],
+    appearance: {
+      theme: "stripe" as const,
+      variables: {
+        colorPrimary: "#2C6ECB",
+        colorBackground: "#ffffff",
+        colorText: "#333333",
+        colorDanger: "#df1b41",
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        spacingUnit: '4px',
+        borderRadius: "10px",
+        fontSizeBase: '16px',
+      },
     },
   }
 
-  // ── MODIFICA 4: options usa clientSecret reale se disponibile ────────────
-  const options = clientSecret
-    ? { clientSecret, appearance }
-    : {
-        mode: "payment" as const,
-        amount: cart.totalCents || 100,
-        currency: (cart.currency || "eur").toLowerCase(),
-        paymentMethodTypes: ["card"],
-        appearance,
-      }
-
   return (
-    // key= forza rimount di Elements UNA SOLA VOLTA quando arriva il PI reale
-    // così PaymentElement e confirmPayment usano sempre lo stesso contesto
-    <Elements
-      key={clientSecret || "init"}
-      stripe={stripePromise}
-      options={options}
-    >
-      <CheckoutInner
-        cart={cart}
-        sessionId={sessionId}
-        onClientSecret={setClientSecret}
-      />
+    <Elements stripe={stripePromise} options={options}>
+      <CheckoutInner cart={cart} sessionId={sessionId} />
     </Elements>
   )
 }

@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       apiVersion: "2025-10-29.clover",
     })
 
-    // ─── HELPER: crea o recupera Stripe Customer ────────────────────────────
+    // ─── HELPER: crea o recupera Stripe Customer ─────────────────────────────
     async function getOrCreateCustomer(
       existingCustomerId: string | undefined
     ): Promise<string | undefined> {
@@ -101,24 +101,21 @@ export async function POST(req: NextRequest) {
 
       try {
         const existingCustomers = await stripe.customers.list({ email, limit: 1 })
-
         if (existingCustomers.data.length > 0) {
           return existingCustomers.data[0].id
         }
 
-        // ── spread condizionale: include solo campi con valore truthy ────────
-        // evita completamente il problema undefined/null con le type overloads
         const createParams: Stripe.CustomerCreateParams = {
           email,
-          ...(fullName   && { name: fullName }),
-          ...(phone      && { phone }),
-          ...(address1   && {
+          ...(fullName    && { name: fullName }),
+          ...(phone       && { phone }),
+          ...(address1    && {
             address: {
               line1: address1,
-              ...(address2   && { line2: address2 }),
-              ...(city       && { city }),
-              ...(postalCode && { postal_code: postalCode }),
-              ...(province   && { state: province }),
+              ...(address2    && { line2: address2 }),
+              ...(city        && { city }),
+              ...(postalCode  && { postal_code: postalCode }),
+              ...(province    && { state: province }),
               ...(countryCode && { country: countryCode }),
             },
           }),
@@ -137,7 +134,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ─── PATH 1: PaymentIntent esistente → riutilizza ───────────────────────
+    // ─── PATH 1: PaymentIntent esistente → riutilizza ────────────────────────
     const existingPaymentIntentId = data.paymentIntentId as string | undefined
 
     if (existingPaymentIntentId) {
@@ -148,10 +145,9 @@ export async function POST(req: NextRequest) {
           existingIntent.status !== "canceled" &&
           existingIntent.status !== "succeeded"
         ) {
-          console.log(
-            `[payment-intent] ♻️ Riutilizzo PaymentIntent esistente: ${existingPaymentIntentId}`
-          )
+          console.log(`[payment-intent] ♻️ Riutilizzo PI: ${existingPaymentIntentId}`)
 
+          // ── FIX UPSELL: crea/recupera customer anche nel path reuse ────────
           const stripeCustomerIdReuse = await getOrCreateCustomer(
             data.stripeCustomerId as string | undefined
           )
@@ -159,9 +155,7 @@ export async function POST(req: NextRequest) {
           const piUpdateParams: Stripe.PaymentIntentUpdateParams = {}
 
           if (existingIntent.amount !== amountCents) {
-            console.log(
-              `[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`
-            )
+            console.log(`[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`)
             piUpdateParams.amount = amountCents
           }
 
@@ -174,7 +168,8 @@ export async function POST(req: NextRequest) {
             await stripe.paymentIntents.update(existingPaymentIntentId, piUpdateParams)
           }
 
-          const updateDataReuse: any = {
+          // ── Salva dati cliente + stripeCustomerId su Firestore ─────────────
+          const updateDataReuse: Record<string, any> = {
             customer: {
               fullName,
               email,
@@ -199,7 +194,7 @@ export async function POST(req: NextRequest) {
 
           await db.collection(COLLECTION).doc(sessionId).update(updateDataReuse)
           console.log(
-            `[payment-intent] ✅ Dati cliente salvati (reuse): ${fullName} (${email}) | customer: ${stripeCustomerIdReuse || "n/a"}`
+            `[payment-intent] ✅ Reuse salvato: ${fullName} (${email}) | customer: ${stripeCustomerIdReuse || "n/a"}`
           )
 
           return NextResponse.json(
@@ -212,13 +207,11 @@ export async function POST(req: NextRequest) {
           )
         }
       } catch (err: any) {
-        console.log(
-          `[payment-intent] ⚠️ PaymentIntent non trovato o non riutilizzabile, ne creo uno nuovo`
-        )
+        console.log(`[payment-intent] ⚠️ PI non riutilizzabile, ne creo uno nuovo`)
       }
     }
 
-    // ─── PATH 2: Crea nuovo PaymentIntent ───────────────────────────────────
+    // ─── PATH 2: Crea nuovo PaymentIntent ────────────────────────────────────
     const stripeCustomerId = await getOrCreateCustomer(
       data.stripeCustomerId as string | undefined
     )
@@ -233,7 +226,7 @@ export async function POST(req: NextRequest) {
         ...(phone && { phone }),
         address: {
           line1: address1,
-          ...(address2   && { line2: address2 }),
+          ...(address2    && { line2: address2 }),
           city,
           postal_code: postalCode,
           state: province,
@@ -291,9 +284,9 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     })
 
-    console.log(`[payment-intent] ✅ PaymentIntent creato: ${paymentIntent.id}`)
+    console.log(`[payment-intent] ✅ PI creato: ${paymentIntent.id}`)
 
-    const updateData: any = {
+    const updateData: Record<string, any> = {
       customer: {
         fullName,
         email,
@@ -322,7 +315,7 @@ export async function POST(req: NextRequest) {
 
     await db.collection(COLLECTION).doc(sessionId).update(updateData)
     console.log(
-      `[payment-intent] ✅ Dati cliente salvati (new PI): ${fullName} (${email}) | customer: ${stripeCustomerId || "n/a"}`
+      `[payment-intent] ✅ Dati salvati (new PI): ${fullName} (${email}) | customer: ${stripeCustomerId || "n/a"}`
     )
 
     return NextResponse.json(
@@ -334,10 +327,11 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     )
   } catch (error: any) {
-    console.error("Errore:", error)
+    console.error("[payment-intent] Errore:", error)
     return NextResponse.json(
       { error: error?.message || "Errore interno" },
       { status: 500 }
     )
   }
 }
+
