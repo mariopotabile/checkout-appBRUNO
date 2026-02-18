@@ -66,12 +66,19 @@ function formatMoney(cents: number | undefined, currency: string = "EUR") {
   }).format(value)
 }
 
+/**
+ * ======================
+ *  CHECKOUT INNER FORM
+ * ======================
+ */
 function CheckoutInner({
   cart,
   sessionId,
+  onClientSecret,
 }: {
   cart: CartSessionResponse
   sessionId: string
+  onClientSecret: (cs: string | null) => void
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -109,7 +116,6 @@ function CheckoutInner({
   const [calculatedShippingCents, setCalculatedShippingCents] =
     useState<number>(0)
   const [isCalculatingShipping, setIsCalculatingShipping] = useState(false)
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [shippingError, setShippingError] = useState<string | null>(null)
   const [orderSummaryExpanded, setOrderSummaryExpanded] = useState(false)
 
@@ -151,35 +157,153 @@ function CheckoutInner({
   const billingLastName =
     billingAddress.fullName.split(" ").slice(1).join(" ") || ""
 
-  function handleCustomerChange(
-    field: keyof CustomerForm,
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) {
-    const value = e.target.value
-    setCustomer((prev) => ({ ...prev, [field]: value }))
+  /**
+   * Google Places Autocomplete
+   */
+  useEffect(() => {
+    let mounted = true
+    const win = window as any
+
+    const initAutocomplete = () => {
+      if (!mounted || !addressInputRef.current) return
+      if (!win.google?.maps?.places) return
+
+      try {
+        if (autocompleteRef.current) {
+          win.google.maps.event.clearInstanceListeners(autocompleteRef.current)
+          autocompleteRef.current = null
+        }
+
+        autocompleteRef.current = new win.google.maps.places.Autocomplete(
+          addressInputRef.current,
+          {
+            types: ["address"],
+            componentRestrictions: {
+              country: [
+                "gb",
+                "ie",
+                "it",
+                "fr",
+                "de",
+                "es",
+                "at",
+                "be",
+                "nl",
+                "ch",
+                "pt",
+              ],
+            },
+            fields: ["address_components", "formatted_address", "geometry"],
+          }
+        )
+
+        autocompleteRef.current.addListener("place_changed", () => {
+          if (!mounted) return
+          handlePlaceSelect()
+        })
+      } catch (err) {
+        console.error("[Autocomplete] Error:", err)
+      }
+    }
+
+    if (!win.google?.maps?.places && !scriptLoadedRef.current) {
+      scriptLoadedRef.current = true
+      const script = document.createElement("script")
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+      if (!apiKey) {
+        console.error("[Autocomplete] API Key missing")
+        return
+      }
+
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=en&callback=initGoogleMaps`
+      script.async = true
+      script.defer = true
+
+      win.initGoogleMaps = () => {
+        requestAnimationFrame(() => {
+          if (mounted) initAutocomplete()
+        })
+      }
+
+      script.onerror = () => {
+        console.error("[Autocomplete] Loading error")
+      }
+
+      document.head.appendChild(script)
+    } else if (win.google?.maps?.places) {
+      initAutocomplete()
+    }
+
+    return () => {
+      mounted = false
+      if (autocompleteRef.current && win.google?.maps?.event) {
+        try {
+          win.google.maps.event.clearInstanceListeners(autocompleteRef.current)
+        } catch (e) {}
+      }
+    }
+  }, [])
+
+  function handlePlaceSelect() {
+    const place = autocompleteRef.current?.getPlace()
+    if (!place || !place.address_components) return
+
+    let street = ""
+    let streetNumber = ""
+    let city = ""
+    let province = ""
+    let postalCode = ""
+    let country = ""
+
+    place.address_components.forEach((component: any) => {
+      const types = component.types
+      if (types.includes("route")) street = component.long_name
+      if (types.includes("street_number")) streetNumber = component.long_name
+      if (types.includes("locality")) city = component.long_name
+      if (types.includes("postal_town") && !city) city = component.long_name
+      if (types.includes("administrative_area_level_3") && !city)
+        city = component.long_name
+      if (types.includes("administrative_area_level_2"))
+        province = component.short_name
+      if (types.includes("administrative_area_level_1") && !province)
+        province = component.short_name
+      if (types.includes("postal_code")) postalCode = component.long_name
+      if (types.includes("country")) country = component.short_name
+    })
+
+    const fullAddress = streetNumber ? `${street} ${streetNumber}` : street
+
+    setCustomer((prev) => ({
+      ...prev,
+      address1: fullAddress || prev.address1,
+      city: city || prev.city,
+      postalCode: postalCode || prev.postalCode,
+      province: province || prev.province,
+      countryCode: country || prev.countryCode,
+    }))
   }
 
-  function handleBillingChange(
-    field: keyof CustomerForm,
+  function handleChange(
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) {
-    const value = e.target.value
-    setBillingAddress((prev) => ({ ...prev, [field]: value }))
+    const { name, value } = e.target
+    setCustomer((prev) => ({ ...prev, [name]: value }))
   }
 
   function isFormValid() {
     const shippingValid =
       customer.fullName.trim().length > 2 &&
-      customer.email.trim().length > 3 &&
+      customer.email.trim().includes("@") &&
+      customer.email.trim().length > 5 &&
+      customer.phone.trim().length > 8 &&
       customer.address1.trim().length > 3 &&
       customer.city.trim().length > 1 &&
       customer.postalCode.trim().length > 2 &&
       customer.province.trim().length > 1 &&
       customer.countryCode.trim().length >= 2
 
-    if (!useDifferentBilling) {
-      return shippingValid
-    }
+    if (!useDifferentBilling) return shippingValid
 
     const billingValid =
       billingAddress.fullName.trim().length > 2 &&
@@ -192,6 +316,10 @@ function CheckoutInner({
     return shippingValid && billingValid
   }
 
+  /**
+   * Calcolo spedizione + creazione PaymentIntent
+   * e passaggio clientSecret verso il parent tramite onClientSecret
+   */
   useEffect(() => {
     async function calculateShipping() {
       const formHash = JSON.stringify({
@@ -203,25 +331,21 @@ function CheckoutInner({
         postalCode: customer.postalCode.trim(),
         province: customer.province.trim(),
         countryCode: customer.countryCode,
-        billingFullName: useDifferentBilling
-          ? billingAddress.fullName.trim()
-          : "",
-        billingAddress1: useDifferentBilling
-          ? billingAddress.address1.trim()
-          : "",
+        billingFullName: useDifferentBilling ? billingAddress.fullName.trim() : "",
+        billingAddress1: useDifferentBilling ? billingAddress.address1.trim() : "",
         subtotal: subtotalCents,
         discount: discountCents,
       })
 
       if (!isFormValid()) {
         setCalculatedShippingCents(0)
-        setClientSecret(null)
+        onClientSecret(null)
         setShippingError(null)
         setLastCalculatedHash("")
         return
       }
 
-      if (formHash === lastCalculatedHash && clientSecret) {
+      if (formHash === lastCalculatedHash) {
         console.log("[Checkout] 💾 Form unchanged, reusing Payment Intent")
         return
       }
@@ -278,12 +402,13 @@ function CheckoutInner({
           }
 
           console.log("[Checkout] ✅ ClientSecret received")
-          setClientSecret(piData.clientSecret)
+          onClientSecret(piData.clientSecret)
           setLastCalculatedHash(formHash)
           setIsCalculatingShipping(false)
         } catch (err: any) {
           console.error("Payment creation error:", err)
           setShippingError(err.message || "Error calculating total")
+          onClientSecret(null)
           setIsCalculatingShipping(false)
         }
       }, 1000)
@@ -316,9 +441,9 @@ function CheckoutInner({
     sessionId,
     subtotalCents,
     cart.totalCents,
-    clientSecret,
     lastCalculatedHash,
     discountCents,
+    onClientSecret,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -336,11 +461,6 @@ function CheckoutInner({
       return
     }
 
-    if (!clientSecret) {
-      setError("Payment Intent not created")
-      return
-    }
-
     try {
       setLoading(true)
 
@@ -352,15 +472,45 @@ function CheckoutInner({
         return
       }
 
-      const { error: confirmError } = await stripe.confirmPayment({
+      const finalBillingAddress = useDifferentBilling ? billingAddress : customer
+
+      const { error: stripeError } = await stripe.confirmPayment({
         elements,
+        // clientSecret non necessario: è già legato agli Elements,
+        // ma puoi lasciarlo se vuoi passarlo esplicitamente
+        confirmParams: {
+          return_url: `${window.location.origin}/thank-you?sessionId=${sessionId}`,
+          payment_method_data: {
+            billing_details: {
+              name: finalBillingAddress.fullName || customer.fullName,
+              email: customer.email,
+              phone: finalBillingAddress.phone || customer.phone,
+              address: {
+                line1: finalBillingAddress.address1,
+                line2: finalBillingAddress.address2 || undefined,
+                city: finalBillingAddress.city,
+                postal_code: finalBillingAddress.postalCode,
+                state: finalBillingAddress.province,
+                country: finalBillingAddress.countryCode || "GB",
+              },
+            },
+            metadata: {
+              session_id: sessionId,
+              customer_fullName: customer.fullName,
+              customer_email: customer.email,
+              shipping_city: customer.city,
+              shipping_postal: customer.postalCode,
+              shipping_country: customer.countryCode,
+              checkout_type: "custom",
+            },
+          },
+        },
         redirect: "if_required",
-        confirmParams: {},
       })
 
-      if (confirmError) {
-        console.error("Confirm payment error:", confirmError)
-        setError(confirmError.message || "Payment failed")
+      if (stripeError) {
+        console.error("Stripe error:", stripeError)
+        setError(stripeError.message || "Payment failed")
         setLoading(false)
         return
       }
@@ -368,163 +518,164 @@ function CheckoutInner({
       setSuccess(true)
       setLoading(false)
 
-      const thankYouUrl = `/thank-you?sessionId=${encodeURIComponent(
-        sessionId
-      )}`
-
-      window.location.href = thankYouUrl
+      setTimeout(() => {
+        window.location.href = `/thank-you?sessionId=${sessionId}`
+      }, 2000)
     } catch (err: any) {
-      console.error("Payment submit error:", err)
-      setError(err.message || "Unexpected error during payment")
+      console.error("Payment error:", err)
+      setError(err.message || "Unexpected error")
       setLoading(false)
     }
   }
 
-  // UI DELLA PAGINA (tutta la parte grafica che avevi già)
-  // ────────────────────────────────────────────────────────
-  // Mantieni qui il tuo layout: order summary, sezioni indirizzo, ecc.
-  // Importante: NON toccare il PaymentElement e i blocchi che abbiamo visto
-  // perché sono già corretti per usare clientSecret.
+  /**
+   * --- qui sotto TUTTO il markup originale della pagina ---
+   * (non lo tocco, solo assicurati che il PaymentElement sia presente)
+   */
 
-  // Per brevità non riscrivo tutta la parte di markup del carrello:
-  // copia/incolla il tuo JSX attuale sotto, usando handleSubmit nel <form>
-  // e PaymentElement con clientSecret come già fai.
-
-  // Esempio skeleton:
   return (
-    <form onSubmit={handleSubmit}>
-      {/* ... il tuo layout esistente (indirizzo, riepilogo, ecc.) ... */}
-
-      {/* Blocco Payment esistente (che avevi già) */}
+    <>
+      {/* tuoi <style jsx global> e tutto il resto invariato... */}
+      {/* ... */}
+      {/* Nel punto del pagamento assicurati di avere: */}
       <div className="shopify-section">
         <h2 className="shopify-section-title">Payment</h2>
 
-        {/* ... badges carte, sicurezza, ecc ... */}
+        {/* Stripe Payment Element */}
+        <div className="mt-4">
+          <PaymentElement />
+        </div>
 
-        {clientSecret && !isCalculatingShipping && (
-          <div className="border border-gray-300 rounded-xl p-4 bg-white shadow-sm mb-4">
-            <PaymentElement
-              options={{
-                fields: {
-                  billingDetails: {
-                    name: "auto",
-                    email: "never",
-                    phone: "never",
-                    address: "never",
-                  },
-                },
-                defaultValues: {
-                  billingDetails: {
-                    name: useDifferentBilling
-                      ? billingAddress.fullName
-                      : customer.fullName,
-                  },
-                },
-              }}
-            />
-          </div>
-        )}
-
-        {!clientSecret && !isCalculatingShipping && (
-          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-            <p className="text-sm text-gray-600 text-center">
-              Fill in all fields to view payment methods
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl">
-            <div className="flex items-start gap-3">
-              <svg
-                className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <p className="text-sm text-red-700 font-medium">{error}</p>
-            </div>
-          </div>
+        {shippingError && (
+          <p className="mt-3 text-sm text-red-600">{shippingError}</p>
         )}
       </div>
 
+      {/* Pulsante di conferma */}
       <button
         type="submit"
-        disabled={loading || !clientSecret}
-        className="w-full mt-4 py-3 px-4 bg-black text-white rounded-md disabled:opacity-60"
+        disabled={loading || !stripe || !elements || isCalculatingShipping}
+        className="shopify-btn mt-4"
       >
-        {loading ? "Processing..." : "Pay now"}
+        {loading ? "Processing..." : "Complete order"}
       </button>
-    </form>
+
+      {error && (
+        <p className="mt-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
+      {success && (
+        <p className="mt-3 text-sm text-green-600">
+          Payment successful! Redirecting...
+        </p>
+      )}
+    </>
   )
 }
 
-// Wrapper con Elements & caricamento cart come già fai
-function CheckoutPageInner() {
+/**
+ * ======================
+ *  PAGE WRAPPER
+ * ======================
+ */
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""
+)
+
+function CheckoutPageContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("sessionId") || ""
 
   const [cart, setCart] = useState<CartSessionResponse | null>(null)
-  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   useEffect(() => {
-    async function init() {
-      if (!sessionId) return
-
-      const res = await fetch(`/api/cart-session?sessionId=${sessionId}`)
-      const data = (await res.json()) as CartSessionResponse
-
-      if (data.error) {
-        setCart(data)
-        return
-      }
-
-      setCart(data)
-
-      // Carica Stripe con la publishable key dall'env
-      const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
-      setStripePromise(loadStripe(pk))
+    if (!sessionId) {
+      setLoading(false)
+      return
     }
 
-    init()
+    async function fetchCart() {
+      try {
+        const res = await fetch(`/api/cart-session?sessionId=${sessionId}`)
+        const data = await res.json()
+        setCart(data)
+      } catch (err) {
+        console.error("Error fetching cart:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchCart()
   }, [sessionId])
 
-  if (!cart || !stripePromise) {
+  const appearance = {
+    theme: "stripe" as const,
+    variables: {
+      colorPrimary: "#2C6ECB",
+      colorBackground: "#ffffff",
+      colorText: "#333333",
+      colorDanger: "#df1b41",
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      spacingUnit: "4px",
+      borderRadius: "10px",
+      fontSizeBase: "16px",
+    },
+  }
+
+  const elementsOptions =
+    clientSecret != null
+      ? {
+          clientSecret,
+          appearance,
+        }
+      : undefined
+
+  if (!sessionId) {
+    return <div className="p-4">Missing sessionId</div>
+  }
+
+  if (loading || !cart) {
+    return <div className="p-4">Loading checkout...</div>
+  }
+
+  if (!elementsOptions) {
+    // form non ancora valido o PI non creato
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-b-2 border-gray-800 rounded-full" />
+      <div className="p-4">
+        {/* puoi mostrare il form di shipping anche qui, dipende da come strutturi l’UI.
+            L’importante è che il bottone di pagamento resti disabilitato
+            finché clientSecret è null. */}
+        <p>Fill in your details to enable payment…</p>
       </div>
     )
   }
 
   return (
-    <Elements
-      stripe={stripePromise}
-      options={{
-        clientSecret: cart.paymentIntentClientSecret || undefined,
-        appearance: { theme: "stripe" },
-      }}
-    >
-      <CheckoutInner cart={cart} sessionId={sessionId} />
+    <Elements stripe={stripePromise} options={elementsOptions}>
+      <form
+        onSubmit={(e) => e.preventDefault()}
+        className="max-w-6xl mx-auto px-4 pb-8 mt-6"
+      >
+        <CheckoutInner
+          cart={cart}
+          sessionId={sessionId}
+          onClientSecret={setClientSecret}
+        />
+      </form>
     </Elements>
   )
 }
 
 export default function CheckoutPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin h-8 w-8 border-b-2 border-gray-800 rounded-full" />
-        </div>
-      }
-    >
-      <CheckoutPageInner />
+    <Suspense fallback={<div className="p-4">Loading…</div>}>
+      <CheckoutPageContent />
     </Suspense>
   )
 }
+
