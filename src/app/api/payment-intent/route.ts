@@ -106,27 +106,30 @@ export async function POST(req: NextRequest) {
           return existingCustomers.data[0].id
         }
 
-        const newCustomer = await stripe.customers.create({
-          email: email,
-          name: fullName || null,
-          phone: phone || null,
-          address: address1
-            ? {
-                line1: address1,
-                line2: address2 || null,
-                city: city || null,
-                postal_code: postalCode || null,
-                state: province || null,
-                country: countryCode || null,
-              }
-            : undefined,
+        // ── spread condizionale: include solo campi con valore truthy ────────
+        // evita completamente il problema undefined/null con le type overloads
+        const createParams: Stripe.CustomerCreateParams = {
+          email,
+          ...(fullName   && { name: fullName }),
+          ...(phone      && { phone }),
+          ...(address1   && {
+            address: {
+              line1: address1,
+              ...(address2   && { line2: address2 }),
+              ...(city       && { city }),
+              ...(postalCode && { postal_code: postalCode }),
+              ...(province   && { state: province }),
+              ...(countryCode && { country: countryCode }),
+            },
+          }),
           metadata: {
             merchant_site: merchantSite,
-            session_id: sessionId!,
+            session_id: sessionId as string,
             stripe_account: activeAccount.label,
           },
-        })
+        }
 
+        const newCustomer = await stripe.customers.create(createParams)
         return newCustomer.id
       } catch (customerError: any) {
         console.error("[payment-intent] Customer error:", customerError)
@@ -227,10 +230,10 @@ export async function POST(req: NextRequest) {
     if (fullName && address1 && city && postalCode) {
       shipping = {
         name: fullName,
-        phone: phone || undefined,
+        ...(phone && { phone }),
         address: {
           line1: address1,
-          line2: address2 || undefined,
+          ...(address2   && { line2: address2 }),
           city,
           postal_code: postalCode,
           state: province,
@@ -243,9 +246,9 @@ export async function POST(req: NextRequest) {
       amount: amountCents,
       currency,
       capture_method: "automatic",
-      customer: stripeCustomerId || undefined,
+      ...(stripeCustomerId && { customer: stripeCustomerId }),
       description,
-      receipt_email: email || undefined,
+      ...(email && { receipt_email: email }),
       statement_descriptor_suffix: statementDescriptorSuffix,
       payment_method_types: ["card"],
       payment_method_options: {
@@ -254,7 +257,7 @@ export async function POST(req: NextRequest) {
         },
       },
       setup_future_usage: "off_session",
-      shipping,
+      ...(shipping && { shipping }),
       metadata: {
         session_id: sessionId,
         merchant_site: merchantSite,
