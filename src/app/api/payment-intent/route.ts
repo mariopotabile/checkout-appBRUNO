@@ -71,10 +71,7 @@ export async function POST(req: NextRequest) {
 
     const descriptorRaw = activeAccount.label || "NFR"
     const statementDescriptorSuffix =
-      `${descriptorRaw.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 18)} ORDER`.slice(
-        0,
-        22
-      )
+      `${descriptorRaw.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 18)} ORDER`.slice(0, 22)
 
     const productTitles: string[] = []
     for (let i = 1; i <= 10; i++) {
@@ -95,19 +92,88 @@ export async function POST(req: NextRequest) {
       apiVersion: "2025-10-29.clover",
     })
 
-    // 🔥 FIX: Controlla se esiste già un PaymentIntent riutilizzabile
+    // ─── HELPER: crea o recupera Stripe Customer ────────────────────────────
+    async function getOrCreateCustomer(
+      existingCustomerId: string | undefined
+    ): Promise<string | undefined> {
+      if (existingCustomerId) return existingCustomerId
+      if (!email) return undefined
+
+      try {
+        const existingCustomers = await stripe.customers.list({ email, limit: 1 })
+
+        if (existingCustomers.data.length > 0) {
+          return existingCustomers.data[0].id
+        }
+
+        const newCustomer = await stripe.customers.create({
+          email,
+          name: fullName || undefined,
+          phone: phone || undefined,
+          address: address1
+            ? {
+                line1: address1,
+                line2: address2 || undefined,
+                city: city || undefined,
+                postal_code: postalCode || undefined,
+                state: province || undefined,
+                country: countryCode || undefined,
+              }
+            : undefined,
+          metadata: {
+            merchant_site: merchantSite,
+            session_id: sessionId,
+            stripe_account: activeAccount.label,
+          },
+        })
+
+        return newCustomer.id
+      } catch (customerError: any) {
+        console.error("[payment-intent] Customer error:", customerError)
+        return undefined
+      }
+    }
+
+    // ─── PATH 1: PaymentIntent esistente → riutilizza ───────────────────────
     const existingPaymentIntentId = data.paymentIntentId as string | undefined
 
     if (existingPaymentIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingPaymentIntentId)
 
-        if (existingIntent.status !== "canceled" && existingIntent.status !== "succeeded") {
+        if (
+          existingIntent.status !== "canceled" &&
+          existingIntent.status !== "succeeded"
+        ) {
           console.log(
             `[payment-intent] ♻️ Riutilizzo PaymentIntent esistente: ${existingPaymentIntentId}`
           )
 
-          // 🔥 FIX: SALVA I DATI CLIENTE ANCHE SE RIUTILIZZO IL PAYMENT INTENT
+          // ── FIX: recupera/crea customer ANCHE nel path di riutilizzo ──────
+          const stripeCustomerIdReuse = await getOrCreateCustomer(
+            data.stripeCustomerId as string | undefined
+          )
+
+          // Aggiorna PI su Stripe se importo cambiato o customer mancante
+          const piUpdateParams: Stripe.PaymentIntentUpdateParams = {}
+
+          if (existingIntent.amount !== amountCents) {
+            console.log(
+              `[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`
+            )
+            piUpdateParams.amount = amountCents
+          }
+
+          if (stripeCustomerIdReuse && !existingIntent.customer) {
+            piUpdateParams.customer = stripeCustomerIdReuse
+            piUpdateParams.setup_future_usage = "off_session"
+          }
+
+          if (Object.keys(piUpdateParams).length > 0) {
+            await stripe.paymentIntents.update(existingPaymentIntentId, piUpdateParams)
+          }
+
+          // Salva su Firestore: customer + stripeCustomerId se disponibile
           const updateDataReuse: any = {
             customer: {
               fullName,
@@ -123,27 +189,23 @@ export async function POST(req: NextRequest) {
             updatedAt: new Date().toISOString(),
           }
 
-          // Se l'importo è cambiato, aggiornalo
-          if (existingIntent.amount !== amountCents) {
-            console.log(
-              `[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`
-            )
-            await stripe.paymentIntents.update(existingPaymentIntentId, {
-              amount: amountCents,
-            })
+          if (amountCents !== existingIntent.amount) {
             updateDataReuse.totalCents = amountCents
           }
 
-          // 🔥 SALVA I DATI CLIENTE IN FIREBASE (ANCHE SE RIUTILIZZO)
+          if (stripeCustomerIdReuse) {
+            updateDataReuse.stripeCustomerId = stripeCustomerIdReuse  // ← FIX
+          }
+
           await db.collection(COLLECTION).doc(sessionId).update(updateDataReuse)
           console.log(
-            `[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`
+            `[payment-intent] ✅ Dati cliente salvati (reuse): ${fullName} (${email}) | customer: ${stripeCustomerIdReuse || "n/a"}`
           )
 
           return NextResponse.json(
             {
               clientSecret: existingIntent.client_secret,
-              publishableKey: publishableKey,
+              publishableKey,
               accountUsed: activeAccount.label,
             },
             { status: 200 }
@@ -151,57 +213,15 @@ export async function POST(req: NextRequest) {
         }
       } catch (err: any) {
         console.log(
-          `[payment-intent] ⚠️ PaymentIntent non trovato, ne creo uno nuovo`
+          `[payment-intent] ⚠️ PaymentIntent non trovato o non riutilizzabile, ne creo uno nuovo`
         )
       }
     }
 
-    // CREA O OTTIENI CUSTOMER
-    let stripeCustomerId = data.stripeCustomerId as string | undefined
-
-    if (!stripeCustomerId && email) {
-      try {
-        const existingCustomers = await stripe.customers.list({
-          email,
-          limit: 1,
-        })
-
-        if (existingCustomers.data.length > 0) {
-          stripeCustomerId = existingCustomers.data[0].id
-        } else {
-          const customer = await stripe.customers.create({
-            email,
-            name: fullName || undefined,
-            phone: phone || undefined,
-            address: address1
-              ? {
-                  line1: address1,
-                  line2: address2 || undefined,
-                  city: city || undefined,
-                  postal_code: postalCode || undefined,
-                  state: province || undefined,
-                  country: countryCode || undefined,
-                }
-              : undefined,
-            metadata: {
-              merchant_site: merchantSite,
-              session_id: sessionId,
-              stripe_account: activeAccount.label,
-            },
-          })
-
-          stripeCustomerId = customer.id
-
-          if (stripeCustomerId) {
-            await db.collection(COLLECTION).doc(sessionId).update({
-              stripeCustomerId,
-            })
-          }
-        }
-      } catch (customerError: any) {
-        console.error("Customer error:", customerError)
-      }
-    }
+    // ─── PATH 2: Crea nuovo PaymentIntent ───────────────────────────────────
+    const stripeCustomerId = await getOrCreateCustomer(
+      data.stripeCustomerId as string | undefined
+    )
 
     const orderNumber = data.orderNumber || sessionId
     const description = `${orderNumber} | ${fullName || "Guest"}`
@@ -230,40 +250,30 @@ export async function POST(req: NextRequest) {
       description,
       receipt_email: email || undefined,
       statement_descriptor_suffix: statementDescriptorSuffix,
-
       payment_method_types: ["card"],
       payment_method_options: {
         card: {
           request_three_d_secure: "any",
         },
       },
-
-      // 👇 AGGIUNTA: salva la carta per futuri pagamenti (upsell, ecc.)
       setup_future_usage: "off_session",
-
       shipping,
-
       metadata: {
         session_id: sessionId,
         merchant_site: merchantSite,
         order_id: orderNumber,
         first_item_title: randomProductTitle,
-
         customer_email: email || "",
         customer_name: fullName || "",
         customer_phone: phone || "",
-
         shipping_address: address1 || "",
         shipping_city: city || "",
         shipping_postal_code: postalCode || "",
         shipping_country: countryCode,
-
         stripe_account: activeAccount.label,
         stripe_account_order: String(activeAccount.order || 0),
         checkout_type: "custom",
-
         created_at: new Date().toISOString(),
-
         customer_ip:
           req.headers.get("x-forwarded-for") ||
           req.headers.get("x-real-ip") ||
@@ -278,12 +288,12 @@ export async function POST(req: NextRequest) {
     const idempotencyKey = `pi_${sessionId}_${amountCents}_${currency}_${emailHash}`
 
     const paymentIntent = await stripe.paymentIntents.create(params, {
-      idempotencyKey: idempotencyKey,
+      idempotencyKey,
     })
 
     console.log(`[payment-intent] ✅ PaymentIntent creato: ${paymentIntent.id}`)
 
-    // 🔥 SALVA SEMPRE I DATI IN FIREBASE
+    // Salva tutto su Firestore
     const updateData: any = {
       customer: {
         fullName,
@@ -299,7 +309,7 @@ export async function POST(req: NextRequest) {
       paymentIntentId: paymentIntent.id,
       items: data.items || [],
       subtotalCents: data.subtotalCents,
-      shippingCents: 590,
+      shippingCents: 0,
       totalCents: amountCents,
       currency: currency.toUpperCase(),
       shopifyOrderNumber: orderNumber,
@@ -308,18 +318,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (stripeCustomerId) {
-      updateData.stripeCustomerId = stripeCustomerId
+      updateData.stripeCustomerId = stripeCustomerId  // ← sempre salvato
     }
 
     await db.collection(COLLECTION).doc(sessionId).update(updateData)
     console.log(
-      `[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`
+      `[payment-intent] ✅ Dati cliente salvati (new PI): ${fullName} (${email}) | customer: ${stripeCustomerId || "n/a"}`
     )
 
     return NextResponse.json(
       {
         clientSecret: paymentIntent.client_secret,
-        publishableKey: publishableKey,
+        publishableKey,
         accountUsed: activeAccount.label,
       },
       { status: 200 }
@@ -332,4 +342,3 @@ export async function POST(req: NextRequest) {
     )
   }
 }
-
