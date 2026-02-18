@@ -107,22 +107,22 @@ export async function POST(req: NextRequest) {
         }
 
         const newCustomer = await stripe.customers.create({
-          email,
-          name: fullName || undefined,
-          phone: phone || undefined,
+          email: email,
+          name: fullName || null,
+          phone: phone || null,
           address: address1
             ? {
                 line1: address1,
-                line2: address2 || undefined,
-                city: city || undefined,
-                postal_code: postalCode || undefined,
-                state: province || undefined,
-                country: countryCode || undefined,
+                line2: address2 || null,
+                city: city || null,
+                postal_code: postalCode || null,
+                state: province || null,
+                country: countryCode || null,
               }
             : undefined,
           metadata: {
             merchant_site: merchantSite,
-            session_id: sessionId,
+            session_id: sessionId!,
             stripe_account: activeAccount.label,
           },
         })
@@ -149,12 +149,10 @@ export async function POST(req: NextRequest) {
             `[payment-intent] ♻️ Riutilizzo PaymentIntent esistente: ${existingPaymentIntentId}`
           )
 
-          // ── FIX: recupera/crea customer ANCHE nel path di riutilizzo ──────
           const stripeCustomerIdReuse = await getOrCreateCustomer(
             data.stripeCustomerId as string | undefined
           )
 
-          // Aggiorna PI su Stripe se importo cambiato o customer mancante
           const piUpdateParams: Stripe.PaymentIntentUpdateParams = {}
 
           if (existingIntent.amount !== amountCents) {
@@ -173,7 +171,6 @@ export async function POST(req: NextRequest) {
             await stripe.paymentIntents.update(existingPaymentIntentId, piUpdateParams)
           }
 
-          // Salva su Firestore: customer + stripeCustomerId se disponibile
           const updateDataReuse: any = {
             customer: {
               fullName,
@@ -194,7 +191,7 @@ export async function POST(req: NextRequest) {
           }
 
           if (stripeCustomerIdReuse) {
-            updateDataReuse.stripeCustomerId = stripeCustomerIdReuse  // ← FIX
+            updateDataReuse.stripeCustomerId = stripeCustomerIdReuse
           }
 
           await db.collection(COLLECTION).doc(sessionId).update(updateDataReuse)
@@ -293,7 +290,6 @@ export async function POST(req: NextRequest) {
 
     console.log(`[payment-intent] ✅ PaymentIntent creato: ${paymentIntent.id}`)
 
-    // Salva tutto su Firestore
     const updateData: any = {
       customer: {
         fullName,
@@ -318,7 +314,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (stripeCustomerId) {
-      updateData.stripeCustomerId = stripeCustomerId  // ← sempre salvato
+      updateData.stripeCustomerId = stripeCustomerId
     }
 
     await db.collection(COLLECTION).doc(sessionId).update(updateData)
