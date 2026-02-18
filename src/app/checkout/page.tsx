@@ -66,15 +66,12 @@ function formatMoney(cents: number | undefined, currency: string = "EUR") {
   }).format(value)
 }
 
-// ─── UNICA MODIFICA: CheckoutInner accetta onClientSecret ───────────────────
 function CheckoutInner({
   cart,
   sessionId,
-  onClientSecret,
 }: {
   cart: CartSessionResponse
   sessionId: string
-  onClientSecret: (cs: string | null) => void  // ← AGGIUNTO
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -312,7 +309,6 @@ function CheckoutInner({
       if (!isFormValid()) {
         setCalculatedShippingCents(0)
         setClientSecret(null)
-        onClientSecret(null)           // ← AGGIUNTO
         setShippingError(null)
         setLastCalculatedHash("")
         return
@@ -371,7 +367,6 @@ function CheckoutInner({
 
           console.log('[Checkout] ✅ ClientSecret received')
           setClientSecret(piData.clientSecret)
-          onClientSecret(piData.clientSecret)  // ← AGGIUNTO: notifica il parent
           setLastCalculatedHash(formHash)
           setIsCalculatingShipping(false)
         } catch (err: any) {
@@ -505,7 +500,6 @@ function CheckoutInner({
     }
   }
 
-  // ─── RETURN: IDENTICO ALL'ORIGINALE ────────────────────────────────────────
   return (
     <>
       <style jsx global>{`
@@ -1479,7 +1473,6 @@ function CheckoutInner({
   )
 }
 
-// ─── CHECKOUT PAGE CONTENT: SOLO QUESTA SEZIONE CAMBIA ──────────────────────
 function CheckoutPageContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("sessionId") || ""
@@ -1488,9 +1481,6 @@ function CheckoutPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null)
-
-  // ── AGGIUNTO: stato clientSecret che sale da CheckoutInner ──
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -1583,43 +1573,29 @@ function CheckoutPageContent() {
     )
   }
 
-  // ── MODIFICA CORE: options usa clientSecret se disponibile,
-  //    altrimenti mode/amount come fallback iniziale per montare Elements
-  //    prima che il PI sia pronto ──────────────────────────────────────────
-  const appearance = {
-    theme: "stripe" as const,
-    variables: {
-      colorPrimary: "#2C6ECB",
-      colorBackground: "#ffffff",
-      colorText: "#333333",
-      colorDanger: "#df1b41",
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-      spacingUnit: '4px',
-      borderRadius: "10px",
-      fontSizeBase: '16px',
+  const options = {
+    mode: 'payment' as const,
+    amount: 1000,
+    currency: (cart.currency || 'eur').toLowerCase(),
+    paymentMethodTypes: ['card'],
+    appearance: {
+      theme: "stripe" as const,
+      variables: {
+        colorPrimary: "#2C6ECB",
+        colorBackground: "#ffffff",
+        colorText: "#333333",
+        colorDanger: "#df1b41",
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        spacingUnit: '4px',
+        borderRadius: "10px",
+        fontSizeBase: '16px',
+      },
     },
   }
 
-  const options = clientSecret
-    ? {
-        clientSecret,           // ← usa il PI reale con customer + setup_future_usage
-        appearance,
-      }
-    : {
-        mode: 'payment' as const,
-        amount: 1000,
-        currency: (cart.currency || 'eur').toLowerCase(),
-        paymentMethodTypes: ['card'],
-        appearance,
-      }
-
   return (
     <Elements stripe={stripePromise} options={options}>
-      <CheckoutInner
-        cart={cart}
-        sessionId={sessionId}
-        onClientSecret={setClientSecret}   // ← passa setter al figlio
-      />
+      <CheckoutInner cart={cart} sessionId={sessionId} />
     </Elements>
   )
 }
