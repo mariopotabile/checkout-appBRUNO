@@ -50,6 +50,11 @@ function ThankYouContent() {
   const [error, setError] = useState<string | null>(null)
   const [cartCleared, setCartCleared] = useState(false)
 
+  // 👇 Stati per upsell
+  const [upsellLoading, setUpsellLoading] = useState(false)
+  const [upsellSuccess, setUpsellSuccess] = useState(false)
+  const [upsellError, setUpsellError] = useState<string | null>(null)
+
   useEffect(() => {
     async function loadOrderDataAndClearCart() {
       if (!sessionId) {
@@ -66,8 +71,8 @@ function ThankYouContent() {
           throw new Error(data.error || "Error loading order")
         }
 
-        console.log('[ThankYou] 📦 Cart data received:', data)
-        console.log('[ThankYou] 📦 RawCart attributes:', data.rawCart?.attributes)
+        console.log("[ThankYou] 📦 Cart data received:", data)
+        console.log("[ThankYou] 📦 RawCart attributes:", data.rawCart?.attributes)
 
         // ✅ FREE SHIPPING ALWAYS (0€)
         const subtotal = data.subtotalCents || 0
@@ -75,20 +80,20 @@ function ThankYouContent() {
         const shipping = 0  // ✅ ALWAYS FREE
         const discount = subtotal > 0 && total > 0 ? subtotal - total : 0
 
-        console.log('[ThankYou] 💰 Calculations:')
-        console.log('  - Subtotal:', subtotal / 100, '€')
-        console.log('  - Discount:', discount / 100, '€')
-        console.log('  - Shipping:', shipping / 100, '€ (FREE)')
-        console.log('  - TOTAL:', total / 100, '€')
+        console.log("[ThankYou] 💰 Calculations:")
+        console.log("  - Subtotal:", subtotal / 100, "€")
+        console.log("  - Discount:", discount / 100, "€")
+        console.log("  - Shipping:", shipping / 100, "€ (FREE)")
+        console.log("  - TOTAL:", total / 100, "€")
 
-        const processedOrderData = {
+        const processedOrderData: OrderData = {
           shopifyOrderNumber: data.shopifyOrderNumber,
           shopifyOrderId: data.shopifyOrderId,
           email: data.customer?.email,
           subtotalCents: subtotal,
-          shippingCents: shipping,  // ✅ 0€
+          shippingCents: shipping,
           discountCents: discount > 0 ? discount : 0,
-          totalCents: total,  // ✅ Total without shipping
+          totalCents: total,
           currency: data.currency || "EUR",
           shopDomain: data.shopDomain,
           paymentIntentId: data.paymentIntentId,
@@ -99,60 +104,64 @@ function ThankYouContent() {
 
         setOrderData(processedOrderData)
 
-        // ═══════════════════════════════════════════════════════════
-        // ✅ FACEBOOK PIXEL - PAGEVIEW ONLY (Purchase handled by webhook)
-        // ═══════════════════════════════════════════════════════════
-        
-        if (typeof window !== 'undefined') {
-          console.log('[ThankYou] 📊 Facebook Pixel PageView')
-          
+        // PIXEL FACEBOOK PAGEVIEW
+        if (typeof window !== "undefined") {
+          console.log("[ThankYou] 📊 Facebook Pixel PageView")
+
           if ((window as any).fbq) {
             try {
-              ;(window as any).fbq('track', 'PageView')
-              console.log('[ThankYou] ✅ Facebook Pixel PageView sent')
-              console.log('[ThankYou] ℹ️ Purchase already tracked by Stripe webhook with complete UTM')
+              ;(window as any).fbq("track", "PageView")
+              console.log("[ThankYou] ✅ Facebook Pixel PageView sent")
+              console.log(
+                "[ThankYou] ℹ️ Purchase already tracked by Stripe webhook with complete UTM"
+              )
             } catch (err) {
-              console.error('[ThankYou] ⚠️ Facebook Pixel blocked:', err)
+              console.error("[ThankYou] ⚠️ Facebook Pixel blocked:", err)
             }
           } else {
-            console.log('[ThankYou] ⚠️ Facebook Pixel not available (fbq not found)')
+            console.log(
+              "[ThankYou] ⚠️ Facebook Pixel not available (fbq not found)"
+            )
           }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        // ✅ GOOGLE ADS CONVERSION WITH UTM
-        // ═══════════════════════════════════════════════════════════
-
+        // GOOGLE ADS CONVERSION
         const sendGoogleConversion = () => {
-          if (typeof window !== 'undefined' && (window as any).gtag) {
-            console.log('[ThankYou] 📊 Sending Google Ads Purchase...')
+          if (typeof window !== "undefined" && (window as any).gtag) {
+            console.log("[ThankYou] 📊 Sending Google Ads Purchase...")
 
-            const orderTotal = total / 100  // ✅ Total without shipping
-            const orderId = data.shopifyOrderNumber || data.shopifyOrderId || sessionId
+            const orderTotal = total / 100
+            const orderId =
+              data.shopifyOrderNumber || data.shopifyOrderId || sessionId
 
             const cartAttrs = data.rawCart?.attributes || {}
 
-            ;(window as any).gtag('event', 'conversion', {
-              'send_to': 'AW-17391033186/G-u0CLKyxbsbEOK22ORA',
-              'value': orderTotal,
-              'currency': data.currency || 'EUR',
-              'transaction_id': orderId,
-              // ✅ UTM TRACKING
-              'utm_source': cartAttrs._wt_last_source || '',
-              'utm_medium': cartAttrs._wt_last_medium || '',
-              'utm_campaign': cartAttrs._wt_last_campaign || '',
-              'utm_content': cartAttrs._wt_last_content || '',
-              'utm_term': cartAttrs._wt_last_term || '',
+            ;(window as any).gtag("event", "conversion", {
+              send_to: "AW-17391033186/G-u0CLKyxbsbEOK22ORA",
+              value: orderTotal,
+              currency: data.currency || "EUR",
+              transaction_id: orderId,
+              utm_source: cartAttrs._wt_last_source || "",
+              utm_medium: cartAttrs._wt_last_medium || "",
+              utm_campaign: cartAttrs._wt_last_campaign || "",
+              utm_content: cartAttrs._wt_last_content || "",
+              utm_term: cartAttrs._wt_last_term || "",
             })
 
-            console.log('[ThankYou] ✅ Google Ads Purchase sent with UTM')
-            console.log('[ThankYou] Order ID:', orderId)
-            console.log('[ThankYou] Value:', orderTotal, data.currency || 'EUR')
-            console.log('[ThankYou] UTM Campaign:', cartAttrs._wt_last_campaign || 'direct')
+            console.log("[ThankYou] ✅ Google Ads Purchase sent with UTM")
+            console.log("[ThankYou] Order ID:", orderId)
+            console.log(
+              "[ThankYou] Value:",
+              orderTotal,
+              data.currency || "EUR"
+            )
+            console.log(
+              "[ThankYou] UTM Campaign:",
+              cartAttrs._wt_last_campaign || "direct"
+            )
           }
         }
 
-        // Try immediately if gtag is available, otherwise wait
         if ((window as any).gtag) {
           sendGoogleConversion()
         } else {
@@ -165,33 +174,27 @@ function ThankYouContent() {
           setTimeout(() => clearInterval(checkGtag), 5000)
         }
 
-        // ═══════════════════════════════════════════════════════════
-        // ✅ FIREBASE ANALYTICS - COMPLETE VERSION WITH ADS PARAMETERS
-        // ═══════════════════════════════════════════════════════════
-
+        // ANALYTICS
         const saveAnalytics = async () => {
           try {
-            console.log('[ThankYou] 💾 Saving complete analytics to Firebase...')
-            
+            console.log(
+              "[ThankYou] 💾 Saving complete analytics to Firebase..."
+            )
+
             const cartAttrs = data.rawCart?.attributes || {}
-            
-            // ✅ COMPLETE DATA FOR ANALYTICS
+
             const analyticsData = {
               orderId: processedOrderData.shopifyOrderId || sessionId,
               orderNumber: processedOrderData.shopifyOrderNumber || null,
               sessionId: sessionId,
               timestamp: new Date().toISOString(),
-              
-              // ✅ DETAILED VALUES
               value: total / 100,
               valueCents: total,
               subtotalCents: subtotal,
-              shippingCents: shipping,  // 0€
+              shippingCents: shipping,
               discountCents: discount,
-              currency: data.currency || 'EUR',
+              currency: data.currency || "EUR",
               itemCount: (data.items || []).length,
-              
-              // ✅ UTM LAST CLICK (with fbclid, gclid AND ADS PARAMETERS)
               utm: {
                 source: cartAttrs._wt_last_source || null,
                 medium: cartAttrs._wt_last_medium || null,
@@ -200,15 +203,12 @@ function ThankYouContent() {
                 term: cartAttrs._wt_last_term || null,
                 fbclid: cartAttrs._wt_last_fbclid || null,
                 gclid: cartAttrs._wt_last_gclid || null,
-                // ✅ ADS PARAMETERS
                 campaign_id: cartAttrs._wt_last_campaign_id || null,
                 adset_id: cartAttrs._wt_last_adset_id || null,
                 adset_name: cartAttrs._wt_last_adset_name || null,
                 ad_id: cartAttrs._wt_last_ad_id || null,
                 ad_name: cartAttrs._wt_last_ad_name || null,
               },
-              
-              // ✅ UTM FIRST CLICK (with referrer, landing page AND ADS PARAMETERS)
               utm_first: {
                 source: cartAttrs._wt_first_source || null,
                 medium: cartAttrs._wt_first_medium || null,
@@ -219,15 +219,12 @@ function ThankYouContent() {
                 landing: cartAttrs._wt_first_landing || null,
                 fbclid: cartAttrs._wt_first_fbclid || null,
                 gclid: cartAttrs._wt_first_gclid || null,
-                // ✅ ADS PARAMETERS
                 campaign_id: cartAttrs._wt_first_campaign_id || null,
                 adset_id: cartAttrs._wt_first_adset_id || null,
                 adset_name: cartAttrs._wt_first_adset_name || null,
                 ad_id: cartAttrs._wt_first_ad_id || null,
                 ad_name: cartAttrs._wt_first_ad_name || null,
               },
-              
-              // ✅ COMPLETE CUSTOMER
               customer: {
                 email: processedOrderData.email || null,
                 fullName: data.customer?.fullName || null,
@@ -235,8 +232,6 @@ function ThankYouContent() {
                 postalCode: data.customer?.postalCode || null,
                 countryCode: data.customer?.countryCode || null,
               },
-              
-              // ✅ COMPLETE ITEMS
               items: (data.items || []).map((item: any) => ({
                 id: item.id || item.variant_id,
                 title: item.title,
@@ -246,73 +241,71 @@ function ThankYouContent() {
                 image: item.image || null,
                 variantTitle: item.variantTitle || null,
               })),
-              
-              // ✅ SHOP DOMAIN
-              shopDomain: data.shopDomain || 'oltreboutique.com',
+              shopDomain: data.shopDomain || "oltreboutique.com",
             }
 
-            console.log('[ThankYou] 📊 Analytics payload:')
-            console.log('[ThankYou]    - Order:', analyticsData.orderNumber || 'pending')
-            console.log('[ThankYou]    - Value:', analyticsData.value, analyticsData.currency)
-            console.log('[ThankYou]    - Items:', analyticsData.itemCount)
-            console.log('[ThankYou]    - UTM Last Campaign:', analyticsData.utm.campaign || 'direct')
-            console.log('[ThankYou]    - UTM Last Campaign ID:', analyticsData.utm.campaign_id || 'N/A')
-            console.log('[ThankYou]    - UTM Last AdSet:', analyticsData.utm.adset_name || 'N/A')
-            console.log('[ThankYou]    - UTM Last Ad Name:', analyticsData.utm.ad_name || 'N/A')
-            console.log('[ThankYou]    - UTM First Campaign:', analyticsData.utm_first.campaign || 'direct')
-
-            // ✅ API ENDPOINT
-            const analyticsRes = await fetch('/api/analytics/purchase', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(analyticsData)
+            const analyticsRes = await fetch("/api/analytics/purchase", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(analyticsData),
             })
 
             if (analyticsRes.ok) {
               const result = await analyticsRes.json()
-              console.log('[ThankYou] ✅ Analytics saved to Firebase - ID:', result.id)
+              console.log(
+                "[ThankYou] ✅ Analytics saved to Firebase - ID:",
+                result.id
+              )
             } else {
               const errorData = await analyticsRes.json()
-              console.error('[ThankYou] ⚠️ Error saving analytics:', errorData)
+              console.error(
+                "[ThankYou] ⚠️ Error saving analytics:",
+                errorData
+              )
             }
           } catch (err) {
-            console.error('[ThankYou] ⚠️ Error calling analytics:', err)
+            console.error("[ThankYou] ⚠️ Error calling analytics:", err)
           }
         }
 
         saveAnalytics()
 
-        // ═══════════════════════════════════════════════════════════
-        // ✅ CLEAR SHOPIFY CART
-        // ═══════════════════════════════════════════════════════════
-
+        // CLEAR CART
         if (data.rawCart?.id || data.rawCart?.token) {
-          const cartId = data.rawCart.id || `gid://shopify/Cart/${data.rawCart.token}`
-          console.log('[ThankYou] 🧹 Starting cart clearing')
+          const cartId =
+            data.rawCart.id ||
+            `gid://shopify/Cart/${data.rawCart.token}`
+          console.log("[ThankYou] 🧹 Starting cart clearing")
 
           try {
-            const clearRes = await fetch('/api/clear-cart', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
+            const clearRes = await fetch("/api/clear-cart", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
                 cartId: cartId,
-                sessionId: sessionId 
+                sessionId: sessionId,
               }),
             })
 
             const clearData = await clearRes.json()
 
             if (clearRes.ok) {
-              console.log('[ThankYou] ✅ Cart cleared successfully')
+              console.log("[ThankYou] ✅ Cart cleared successfully")
               setCartCleared(true)
             } else {
-              console.error('[ThankYou] ⚠️ Cart clearing error:', clearData.error)
+              console.error(
+                "[ThankYou] ⚠️ Cart clearing error:",
+                clearData.error
+              )
             }
           } catch (clearErr) {
-            console.error('[ThankYou] ⚠️ Error calling clear-cart:', clearErr)
+            console.error(
+              "[ThankYou] ⚠️ Error calling clear-cart:",
+              clearErr
+            )
           }
         } else {
-          console.log('[ThankYou] ℹ️ No cart to clear')
+          console.log("[ThankYou] ℹ️ No cart to clear")
         }
 
         setLoading(false)
@@ -326,7 +319,7 @@ function ThankYouContent() {
     loadOrderDataAndClearCart()
   }, [sessionId])
 
-  // ✅ FIXED LINK TO SHOP
+  // ✅ LINK SHOP
   const shopUrl = "https://oltreboutique.com"
 
   const formatMoney = (cents: number | undefined) => {
@@ -336,6 +329,61 @@ function ThankYouContent() {
       currency: orderData?.currency || "EUR",
       minimumFractionDigits: 2,
     }).format(value)
+  }
+
+  // 👇 CONFIG PRODOTTO UPSELL – CAMBIA QUI variantId + priceCents
+  const UPSELL_CONFIG = {
+    variantId: 55350819750273, // ID variante Shopify upsell
+    quantity: 1,
+    priceCents: 100, // 1,00 EUR (cambia col tuo prezzo reale)
+    title: "Add 1 more piece at a special price!",
+    subtitle: "Only now, right after your order confirmation.",
+    bullet1: "No extra shipping costs, same parcel.",
+    bullet2: "Perfect as a gift or to always have a spare.",
+  }
+
+  const handleUpsell = async () => {
+    if (!sessionId || !orderData) return
+    setUpsellError(null)
+    setUpsellSuccess(false)
+    setUpsellLoading(true)
+
+    try {
+      const res = await fetch("/api/upsell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          variantId: UPSELL_CONFIG.variantId,
+          quantity: UPSELL_CONFIG.quantity,
+          upsellAmountCents: UPSELL_CONFIG.priceCents,
+        }),
+      })
+
+      const data = await res.json()
+      console.log("[ThankYou] UPSSELL RESPONSE:", data)
+
+      if (!res.ok || !data.success) {
+        if (data.requiresAction) {
+          setUpsellError(
+            "Your bank requires additional authentication for this extra product."
+          )
+        } else {
+          setUpsellError(
+            data.error || "Unable to add the extra product. Please try again."
+          )
+        }
+        setUpsellLoading(false)
+        return
+      }
+
+      setUpsellSuccess(true)
+      setUpsellLoading(false)
+    } catch (err: any) {
+      console.error("[ThankYou] Upsell error:", err)
+      setUpsellError("Unexpected error while adding the extra product.")
+      setUpsellLoading(false)
+    }
   }
 
   if (loading) {
@@ -353,8 +401,18 @@ function ThankYouContent() {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4">
         <div className="max-w-md text-center space-y-6 p-8 bg-white rounded-lg shadow-sm border border-gray-200">
-          <svg className="w-16 h-16 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg
+            className="w-16 h-16 text-red-500 mx-auto"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
           <h1 className="text-2xl font-bold text-gray-900">Order not found</h1>
           <p className="text-gray-600">{error}</p>
@@ -371,7 +429,7 @@ function ThankYouContent() {
 
   return (
     <>
-      {/* ✅ FACEBOOK PIXEL INIT - Only for PageView */}
+      {/* FACEBOOK PIXEL INIT */}
       <Script id="facebook-pixel" strategy="afterInteractive">
         {`
           !function(f,b,e,v,n,t,s)
@@ -388,7 +446,7 @@ function ThankYouContent() {
         `}
       </Script>
 
-      {/* ✅ GOOGLE TAG (GTAG.JS) */}
+      {/* GOOGLE TAG */}
       <Script
         src="https://www.googletagmanager.com/gtag/js?id=AW-17391033186"
         strategy="afterInteractive"
@@ -415,7 +473,8 @@ function ThankYouContent() {
         }
 
         body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
           background: #fafafa;
           color: #333333;
           -webkit-font-smoothing: antialiased;
@@ -423,7 +482,7 @@ function ThankYouContent() {
       `}</style>
 
       <div className="min-h-screen bg-[#fafafa]">
-        {/* ✅ HEADER WITH NEW LOGO */}
+        {/* HEADER */}
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="flex justify-center">
@@ -432,7 +491,7 @@ function ThankYouContent() {
                   src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/Progetto_senza_titolo_81.png?v=1770929667"
                   alt="Logo"
                   className="h-12"
-                  style={{ maxWidth: '180px' }}
+                  style={{ maxWidth: "180px" }}
                 />
               </a>
             </div>
@@ -440,14 +499,21 @@ function ThankYouContent() {
         </header>
 
         <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
-
-          {/* ✅ ORDER CONFIRMATION CARD */}
+          {/* ORDER CARD */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
-
-            {/* Green Check Icon */}
             <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto mb-6">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-8 h-8 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
 
@@ -458,7 +524,6 @@ function ThankYouContent() {
               Thank you for your purchase!
             </p>
 
-            {/* Order Number */}
             {orderData.shopifyOrderNumber && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
                 <p className="text-sm text-gray-600 mb-1">Order number</p>
@@ -468,24 +533,34 @@ function ThankYouContent() {
               </div>
             )}
 
-            {/* Confirmation Email */}
             {orderData.email && (
               <div className="border-t border-gray-200 pt-6 mb-6">
                 <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <svg
+                    className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
                   </svg>
                   <div>
                     <p className="text-sm font-medium text-gray-900 mb-1">
                       Confirmation sent to
                     </p>
-                    <p className="text-sm text-gray-600">{orderData.email}</p>
+                    <p className="text-sm text-gray-600">
+                      {orderData.email}
+                    </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Product List */}
             {orderData.items && orderData.items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 mb-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">
@@ -518,7 +593,9 @@ function ThankYouContent() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-sm font-medium text-gray-900">
-                          {formatMoney(item.linePriceCents || item.priceCents || 0)}
+                          {formatMoney(
+                            item.linePriceCents || item.priceCents || 0
+                          )}
                         </p>
                       </div>
                     </div>
@@ -527,65 +604,172 @@ function ThankYouContent() {
               </div>
             )}
 
-            {/* Price Summary */}
             <div className="border-t border-gray-200 pt-6">
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="text-gray-900">{formatMoney(orderData.subtotalCents)}</span>
+                  <span className="text-gray-900">
+                    {formatMoney(orderData.subtotalCents)}
+                  </span>
                 </div>
 
-                {orderData.discountCents && orderData.discountCents > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Discount</span>
-                    <span>-{formatMoney(orderData.discountCents)}</span>
-                  </div>
-                )}
+                {orderData.discountCents &&
+                  orderData.discountCents > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Discount</span>
+                      <span>
+                        -{formatMoney(orderData.discountCents)}
+                      </span>
+                    </div>
+                  )}
 
-                {/* ✅ SHIPPING ALWAYS FREE */}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Shipping</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-green-600 font-bold">FREE</span>
-                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    <span className="text-green-600 font-bold">
+                      FREE
+                    </span>
+                    <svg
+                      className="w-4 h-4 text-green-600"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </div>
                 </div>
 
                 <div className="flex justify-between text-lg font-semibold pt-3 border-t border-gray-200">
                   <span>Total</span>
-                  <span className="text-xl">{formatMoney(orderData.totalCents)}</span>
+                  <span className="text-xl">
+                    {formatMoney(orderData.totalCents)}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Info Box */}
+          {/* 🔥 BLOCCO UPSELL LANDING-STYLE */}
+          {!upsellSuccess && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-6 sm:p-8 mb-8 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold bg-red-600 text-white rounded-full uppercase tracking-wide">
+                  Last chance
+                </span>
+                <span className="text-xs text-red-700 font-semibold">
+                  Only valid on this page
+                </span>
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
+                Do you want to add 1 more piece at a special price?
+              </h2>
+              <p className="text-sm text-gray-700 mb-4">
+                Your order is confirmed. Only now you can add an extra
+                product to your shipment without entering card details
+                again.
+              </p>
+
+              <div className="bg-white border border-yellow-200 rounded-lg p-4 mb-4">
+                <p className="text-sm font-semibold text-gray-900 mb-1">
+                  {UPSELL_CONFIG.title}
+                </p>
+                <p className="text-xs text-gray-600 mb-3">
+                  {UPSELL_CONFIG.subtitle}
+                </p>
+                <ul className="text-xs text-gray-700 mb-3 space-y-1">
+                  <li>• {UPSELL_CONFIG.bullet1}</li>
+                  <li>• {UPSELL_CONFIG.bullet2}</li>
+                  <li>• Added to the same name and shipping address</li>
+                </ul>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">
+                    Special price now:
+                  </span>
+                  <span className="text-lg font-bold text-red-600">
+                    {formatMoney(UPSELL_CONFIG.priceCents)}
+                  </span>
+                </div>
+              </div>
+
+              {upsellError && (
+                <div className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  {upsellError}
+                </div>
+              )}
+
+              <button
+                onClick={handleUpsell}
+                disabled={upsellLoading}
+                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed mb-2"
+              >
+                {upsellLoading
+                  ? "Adding your extra product..."
+                  : "Yes, add this extra product to my order"}
+              </button>
+              <p className="text-[11px] text-gray-500 text-center">
+                By clicking you authorize a one-time extra charge of{" "}
+                {formatMoney(UPSELL_CONFIG.priceCents)} using the same
+                payment method.
+              </p>
+            </div>
+          )}
+
+          {upsellSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
+              <p className="text-sm text-green-800 text-center">
+                ✓ Extra product successfully added. You will receive a
+                separate order confirmation for the upsell.
+              </p>
+            </div>
+          )}
+
+          {/* INFO BOX */}
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 mb-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-5 h-5 text-blue-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               What happens next?
             </h2>
             <ul className="space-y-3 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">1.</span>
-                <span>You will receive a confirmation email with all the details</span>
+                <span>
+                  You will receive a confirmation email with all the
+                  details
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">2.</span>
-                <span>Your order will be prepared within 1-2 business days</span>
+                <span>
+                  Your order will be prepared within 1-2 business days
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">3.</span>
-                <span>You will receive shipping tracking via email</span>
+                <span>
+                  You will receive shipping tracking via email
+                </span>
               </li>
             </ul>
           </div>
 
-          {/* Buttons */}
+          {/* BUTTONS */}
           <div className="space-y-3">
             <a
               href={shopUrl}
@@ -601,11 +785,9 @@ function ThankYouContent() {
             </a>
           </div>
 
-          {/* Support Link */}
+          {/* SUPPORT */}
           <div className="text-center mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-2">
-              Need help?
-            </p>
+            <p className="text-sm text-gray-600 mb-2">Need help?</p>
             <a
               href={`${shopUrl}/pages/contatti`}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
@@ -614,7 +796,7 @@ function ThankYouContent() {
             </a>
           </div>
 
-          {/* Cart Cleared Message */}
+          {/* CART CLEARED */}
           {cartCleared && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
               <p className="text-xs text-green-800 text-center">
@@ -624,7 +806,7 @@ function ThankYouContent() {
           )}
         </div>
 
-        {/* Footer */}
+        {/* FOOTER */}
         <footer className="border-t border-gray-200 py-6 mt-12">
           <div className="max-w-6xl mx-auto px-4 text-center">
             <p className="text-xs text-gray-500">
