@@ -107,15 +107,15 @@ export async function POST(req: NextRequest) {
 
         const createParams: Stripe.CustomerCreateParams = {
           email,
-          ...(fullName    && { name: fullName }),
-          ...(phone       && { phone }),
-          ...(address1    && {
+          ...(fullName   && { name: fullName }),
+          ...(phone      && { phone }),
+          ...(address1   && {
             address: {
               line1: address1,
-              ...(address2    && { line2: address2 }),
-              ...(city        && { city }),
-              ...(postalCode  && { postal_code: postalCode }),
-              ...(province    && { state: province }),
+              ...(address2   && { line2: address2 }),
+              ...(city       && { city }),
+              ...(postalCode && { postal_code: postalCode }),
+              ...(province   && { state: province }),
               ...(countryCode && { country: countryCode }),
             },
           }),
@@ -147,7 +147,6 @@ export async function POST(req: NextRequest) {
         ) {
           console.log(`[payment-intent] ♻️ Riutilizzo PI: ${existingPaymentIntentId}`)
 
-          // ── FIX UPSELL: crea/recupera customer anche nel path reuse ────────
           const stripeCustomerIdReuse = await getOrCreateCustomer(
             data.stripeCustomerId as string | undefined
           )
@@ -161,14 +160,13 @@ export async function POST(req: NextRequest) {
 
           if (stripeCustomerIdReuse && !existingIntent.customer) {
             piUpdateParams.customer = stripeCustomerIdReuse
-            piUpdateParams.setup_future_usage = "off_session"
+            // setup_future_usage rimosso: deve essere null per compatibilità con Elements
           }
 
           if (Object.keys(piUpdateParams).length > 0) {
             await stripe.paymentIntents.update(existingPaymentIntentId, piUpdateParams)
           }
 
-          // ── Salva dati cliente + stripeCustomerId su Firestore ─────────────
           const updateDataReuse: Record<string, any> = {
             customer: {
               fullName,
@@ -226,7 +224,7 @@ export async function POST(req: NextRequest) {
         ...(phone && { phone }),
         address: {
           line1: address1,
-          ...(address2    && { line2: address2 }),
+          ...(address2   && { line2: address2 }),
           city,
           postal_code: postalCode,
           state: province,
@@ -249,7 +247,8 @@ export async function POST(req: NextRequest) {
           request_three_d_secure: "any",
         },
       },
-      setup_future_usage: "off_session",
+      // setup_future_usage rimosso: deve essere null per compatibilità con Elements mode:payment
+      // il stripePaymentMethodId per l'upsell viene salvato dal webhook dopo payment_intent.succeeded
       ...(shipping && { shipping }),
       metadata: {
         session_id: sessionId,
@@ -334,4 +333,3 @@ export async function POST(req: NextRequest) {
     )
   }
 }
-
