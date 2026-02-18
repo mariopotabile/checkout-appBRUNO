@@ -102,8 +102,10 @@ export async function POST(req: NextRequest) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingPaymentIntentId)
 
-        if (existingIntent.status !== 'canceled' && existingIntent.status !== 'succeeded') {
-          console.log(`[payment-intent] ♻️ Riutilizzo PaymentIntent esistente: ${existingPaymentIntentId}`)
+        if (existingIntent.status !== "canceled" && existingIntent.status !== "succeeded") {
+          console.log(
+            `[payment-intent] ♻️ Riutilizzo PaymentIntent esistente: ${existingPaymentIntentId}`
+          )
 
           // 🔥 FIX: SALVA I DATI CLIENTE ANCHE SE RIUTILIZZO IL PAYMENT INTENT
           const updateDataReuse: any = {
@@ -123,7 +125,9 @@ export async function POST(req: NextRequest) {
 
           // Se l'importo è cambiato, aggiornalo
           if (existingIntent.amount !== amountCents) {
-            console.log(`[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`)
+            console.log(
+              `[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`
+            )
             await stripe.paymentIntents.update(existingPaymentIntentId, {
               amount: amountCents,
             })
@@ -132,16 +136,23 @@ export async function POST(req: NextRequest) {
 
           // 🔥 SALVA I DATI CLIENTE IN FIREBASE (ANCHE SE RIUTILIZZO)
           await db.collection(COLLECTION).doc(sessionId).update(updateDataReuse)
-          console.log(`[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`)
+          console.log(
+            `[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`
+          )
 
-          return NextResponse.json({
-            clientSecret: existingIntent.client_secret,
-            publishableKey: publishableKey,
-            accountUsed: activeAccount.label,
-          }, { status: 200 })
+          return NextResponse.json(
+            {
+              clientSecret: existingIntent.client_secret,
+              publishableKey: publishableKey,
+              accountUsed: activeAccount.label,
+            },
+            { status: 200 }
+          )
         }
       } catch (err: any) {
-        console.log(`[payment-intent] ⚠️ PaymentIntent non trovato, ne creo uno nuovo`)
+        console.log(
+          `[payment-intent] ⚠️ PaymentIntent non trovato, ne creo uno nuovo`
+        )
       }
     }
 
@@ -227,6 +238,9 @@ export async function POST(req: NextRequest) {
         },
       },
 
+      // 👇 AGGIUNTA: salva la carta per futuri pagamenti (upsell, ecc.)
+      setup_future_usage: "off_session",
+
       shipping,
 
       metadata: {
@@ -258,7 +272,9 @@ export async function POST(req: NextRequest) {
       },
     }
 
-    const emailHash = email ? email.substring(0, 5).replace(/[^a-z0-9]/gi, '') : 'guest'
+    const emailHash = email
+      ? email.substring(0, 5).replace(/[^a-z0-9]/gi, "")
+      : "guest"
     const idempotencyKey = `pi_${sessionId}_${amountCents}_${currency}_${emailHash}`
 
     const paymentIntent = await stripe.paymentIntents.create(params, {
@@ -296,7 +312,9 @@ export async function POST(req: NextRequest) {
     }
 
     await db.collection(COLLECTION).doc(sessionId).update(updateData)
-    console.log(`[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`)
+    console.log(
+      `[payment-intent] ✅ Dati cliente salvati: ${fullName} (${email})`
+    )
 
     return NextResponse.json(
       {
@@ -314,3 +332,4 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+
