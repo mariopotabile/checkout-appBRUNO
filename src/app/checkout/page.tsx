@@ -477,7 +477,7 @@ function CheckoutInner({
           },
         },
 
-        redirect: "always",
+        redirect: "if_required",
       })
 
       if (stripeError) {

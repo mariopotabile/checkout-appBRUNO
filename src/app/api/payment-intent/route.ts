@@ -135,15 +135,16 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── PATH 1: cancella PI esistente se non ancora pagato ──────────────────
-    // Non riutilizzare mai: evita mismatch setup_future_usage con Elements
     const existingPaymentIntentId = data.paymentIntentId as string | undefined
 
     if (existingPaymentIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingPaymentIntentId)
 
-        if (existingIntent.status === "succeeded" || existingIntent.status === "processing") {
-          // Già pagato → blocca
+        if (
+          existingIntent.status === "succeeded" ||
+          existingIntent.status === "processing"
+        ) {
           return NextResponse.json(
             { error: "Pagamento già completato per questa sessione" },
             { status: 400 }
@@ -227,11 +228,28 @@ export async function POST(req: NextRequest) {
       },
     }
 
-    // Niente idempotencyKey: ogni chiamata crea un PI fresco
     const paymentIntent = await stripe.paymentIntents.create(params)
-
     console.log(`[payment-intent] ✅ PI creato: ${paymentIntent.id}`)
 
+    // ─── SetupIntent per mandate MIT (upsell off-session) ────────────────────
+    // Creato in parallelo, non blocca il flusso se fallisce
+    if (stripeCustomerId) {
+      stripe.setupIntents.create({
+        customer: stripeCustomerId,
+        payment_method_types: ["card"],
+        usage: "off_session",
+        metadata: {
+          session_id: sessionId,
+          stripe_account: activeAccount.label,
+        },
+      }).then((si) => {
+        console.log(`[payment-intent] ✅ SetupIntent creato: ${si.id}`)
+      }).catch((e: any) => {
+        console.log("[payment-intent] ⚠️ SetupIntent non bloccante:", e.message)
+      })
+    }
+
+    // ─── Salva su Firestore ───────────────────────────────────────────────────
     const updateData: Record<string, any> = {
       customer: {
         fullName,
