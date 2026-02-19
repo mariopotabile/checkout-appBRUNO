@@ -114,25 +114,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ─── 1) PaymentIntent upsell con MIT ─────────────────────────────────────
+    // ─── 1) PaymentIntent upsell MIT ─────────────────────────────────────────
     const description = `Upsell - Session ${sessionId} - Variant ${variantIdNum}`
 
-    const networkTransactionId = sessionData.networkTransactionId as string | undefined
-    if (networkTransactionId) {
-      console.log(`[upsell] 🔑 MIT con network_transaction_id: ${networkTransactionId}`)
-    } else {
-      console.log("[upsell] ⚠️ network_transaction_id non disponibile, upsell senza MIT")
-    }
-
-    // ✅ FIX: network_transaction_id va dentro card direttamente,
-    // NON dentro mit_exemption (parametro non supportato da Stripe)
-    const cardOptions: Stripe.PaymentIntentCreateParams.PaymentMethodOptions.Card = {
-      request_three_d_secure: "automatic",
-      ...(networkTransactionId && {
-        network_transaction_id: networkTransactionId,
-      }),
-    }
-
+    // off_session: true gestisce automaticamente l'esenzione MIT
+    // non servono parametri extra come mit_exemption o network_transaction_id
     let upsellPaymentIntent: Stripe.PaymentIntent
 
     try {
@@ -145,7 +131,9 @@ export async function POST(req: NextRequest) {
         confirm: true,
         description,
         payment_method_options: {
-          card: cardOptions,
+          card: {
+            request_three_d_secure: "automatic",
+          },
         },
         metadata: {
           session_id: sessionId,

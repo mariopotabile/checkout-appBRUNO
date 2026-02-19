@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       payment_method_options: {
         card: {
-          request_three_d_secure: "any",
+          request_three_d_secure: "automatic",
         },
       },
       setup_future_usage: "off_session",
@@ -233,21 +233,7 @@ export async function POST(req: NextRequest) {
 
     // ─── SetupIntent per mandate MIT (upsell off-session) ────────────────────
     // Creato in parallelo, non blocca il flusso se fallisce
-    if (stripeCustomerId) {
-      stripe.setupIntents.create({
-        customer: stripeCustomerId,
-        payment_method_types: ["card"],
-        usage: "off_session",
-        metadata: {
-          session_id: sessionId,
-          stripe_account: activeAccount.label,
-        },
-      }).then((si) => {
-        console.log(`[payment-intent] ✅ SetupIntent creato: ${si.id}`)
-      }).catch((e: any) => {
-        console.log("[payment-intent] ⚠️ SetupIntent non bloccante:", e.message)
-      })
-    }
+    
 
     // ─── Salva su Firestore ───────────────────────────────────────────────────
     const updateData: Record<string, any> = {
