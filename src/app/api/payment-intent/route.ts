@@ -107,15 +107,15 @@ export async function POST(req: NextRequest) {
 
         const createParams: Stripe.CustomerCreateParams = {
           email,
-          ...(fullName   && { name: fullName }),
-          ...(phone      && { phone }),
-          ...(address1   && {
+          ...(fullName    && { name: fullName }),
+          ...(phone       && { phone }),
+          ...(address1    && {
             address: {
               line1: address1,
-              ...(address2   && { line2: address2 }),
-              ...(city       && { city }),
-              ...(postalCode && { postal_code: postalCode }),
-              ...(province   && { state: province }),
+              ...(address2    && { line2: address2 }),
+              ...(city        && { city }),
+              ...(postalCode  && { postal_code: postalCode }),
+              ...(province    && { state: province }),
               ...(countryCode && { country: countryCode }),
             },
           }),
@@ -134,82 +134,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ─── PATH 1: PaymentIntent esistente → riutilizza ────────────────────────
+    // ─── PATH 1: cancella PI esistente se non ancora pagato ──────────────────
+    // Non riutilizzare mai: evita mismatch setup_future_usage con Elements
     const existingPaymentIntentId = data.paymentIntentId as string | undefined
 
     if (existingPaymentIntentId) {
       try {
         const existingIntent = await stripe.paymentIntents.retrieve(existingPaymentIntentId)
 
-        if (
-          existingIntent.status !== "canceled" &&
-          existingIntent.status !== "succeeded"
-        ) {
-          console.log(`[payment-intent] ♻️ Riutilizzo PI: ${existingPaymentIntentId}`)
-
-          const stripeCustomerIdReuse = await getOrCreateCustomer(
-            data.stripeCustomerId as string | undefined
-          )
-
-          const piUpdateParams: Stripe.PaymentIntentUpdateParams = {}
-
-          if (existingIntent.amount !== amountCents) {
-            console.log(`[payment-intent] 💰 Aggiornamento importo: ${existingIntent.amount} → ${amountCents}`)
-            piUpdateParams.amount = amountCents
-          }
-
-          if (stripeCustomerIdReuse && !existingIntent.customer) {
-            piUpdateParams.customer = stripeCustomerIdReuse
-            // setup_future_usage rimosso: deve essere null per compatibilità con Elements
-          }
-
-          if (Object.keys(piUpdateParams).length > 0) {
-            await stripe.paymentIntents.update(existingPaymentIntentId, piUpdateParams)
-          }
-
-          const updateDataReuse: Record<string, any> = {
-            customer: {
-              fullName,
-              email,
-              phone,
-              address1,
-              address2,
-              city,
-              postalCode,
-              province,
-              countryCode,
-            },
-            updatedAt: new Date().toISOString(),
-          }
-
-          if (amountCents !== existingIntent.amount) {
-            updateDataReuse.totalCents = amountCents
-          }
-
-          if (stripeCustomerIdReuse) {
-            updateDataReuse.stripeCustomerId = stripeCustomerIdReuse
-          }
-
-          await db.collection(COLLECTION).doc(sessionId).update(updateDataReuse)
-          console.log(
-            `[payment-intent] ✅ Reuse salvato: ${fullName} (${email}) | customer: ${stripeCustomerIdReuse || "n/a"}`
-          )
-
+        if (existingIntent.status === "succeeded" || existingIntent.status === "processing") {
+          // Già pagato → blocca
           return NextResponse.json(
-            {
-              clientSecret: existingIntent.client_secret,
-              publishableKey,
-              accountUsed: activeAccount.label,
-            },
-            { status: 200 }
+            { error: "Pagamento già completato per questa sessione" },
+            { status: 400 }
           )
         }
+
+        if (
+          existingIntent.status === "requires_payment_method" ||
+          existingIntent.status === "requires_confirmation" ||
+          existingIntent.status === "requires_action"
+        ) {
+          await stripe.paymentIntents.cancel(existingPaymentIntentId)
+          console.log(`[payment-intent] 🗑️ PI vecchio cancellato: ${existingPaymentIntentId}`)
+        }
       } catch (err: any) {
-        console.log(`[payment-intent] ⚠️ PI non riutilizzabile, ne creo uno nuovo`)
+        console.log(`[payment-intent] ⚠️ PI vecchio non trovato, procedo`)
       }
     }
 
-    // ─── PATH 2: Crea nuovo PaymentIntent ────────────────────────────────────
+    // ─── PATH 2: Crea sempre un nuovo PaymentIntent ───────────────────────────
     const stripeCustomerId = await getOrCreateCustomer(
       data.stripeCustomerId as string | undefined
     )
@@ -224,7 +178,7 @@ export async function POST(req: NextRequest) {
         ...(phone && { phone }),
         address: {
           line1: address1,
-          ...(address2   && { line2: address2 }),
+          ...(address2    && { line2: address2 }),
           city,
           postal_code: postalCode,
           state: province,
@@ -247,8 +201,7 @@ export async function POST(req: NextRequest) {
           request_three_d_secure: "any",
         },
       },
-      // setup_future_usage rimosso: deve essere null per compatibilità con Elements mode:payment
-       setup_future_usage: "off_session",   // ← RIMETTI
+      setup_future_usage: "off_session",
       ...(shipping && { shipping }),
       metadata: {
         session_id: sessionId,
@@ -274,14 +227,8 @@ export async function POST(req: NextRequest) {
       },
     }
 
-    const emailHash = email
-      ? email.substring(0, 5).replace(/[^a-z0-9]/gi, "")
-      : "guest"
-    const idempotencyKey = `pi_${sessionId}_${amountCents}_${currency}_${emailHash}`
-
-    const paymentIntent = await stripe.paymentIntents.create(params, {
-      idempotencyKey,
-    })
+    // Niente idempotencyKey: ogni chiamata crea un PI fresco
+    const paymentIntent = await stripe.paymentIntents.create(params)
 
     console.log(`[payment-intent] ✅ PI creato: ${paymentIntent.id}`)
 
@@ -314,7 +261,7 @@ export async function POST(req: NextRequest) {
 
     await db.collection(COLLECTION).doc(sessionId).update(updateData)
     console.log(
-      `[payment-intent] ✅ Dati salvati (new PI): ${fullName} (${email}) | customer: ${stripeCustomerId || "n/a"}`
+      `[payment-intent] ✅ Dati salvati: ${fullName} (${email}) | customer: ${stripeCustomerId || "n/a"}`
     )
 
     return NextResponse.json(
