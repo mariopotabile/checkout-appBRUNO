@@ -1578,6 +1578,7 @@ function CheckoutPageContent() {
     amount: 1000,
     currency: (cart.currency || 'eur').toLowerCase(),
     paymentMethodTypes: ['card'],
+  setupFutureUsage: "off_session" as const,   // ← AGGIUNGI questa riga
     appearance: {
       theme: "stripe" as const,
       variables: {

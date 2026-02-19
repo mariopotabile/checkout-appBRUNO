@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
         },
       },
       // setup_future_usage rimosso: deve essere null per compatibilità con Elements mode:payment
-      // il stripePaymentMethodId per l'upsell viene salvato dal webhook dopo payment_intent.succeeded
+       setup_future_usage: "off_session",   // ← RIMETTI
       ...(shipping && { shipping }),
       metadata: {
         session_id: sessionId,
