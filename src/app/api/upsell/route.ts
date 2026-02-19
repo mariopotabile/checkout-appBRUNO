@@ -114,15 +114,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ─── 1) PaymentIntent upsell con MIT exemption ────────────────────────────
+    // ─── 1) PaymentIntent upsell con MIT ─────────────────────────────────────
     const description = `Upsell - Session ${sessionId} - Variant ${variantIdNum}`
 
-    // Recupera network_transaction_id salvato dal webhook per esenzione MIT SCA
     const networkTransactionId = sessionData.networkTransactionId as string | undefined
     if (networkTransactionId) {
-      console.log(`[upsell] 🔑 MIT exemption con network_transaction_id: ${networkTransactionId}`)
+      console.log(`[upsell] 🔑 MIT con network_transaction_id: ${networkTransactionId}`)
     } else {
-      console.log("[upsell] ⚠️ network_transaction_id non disponibile, upsell senza MIT exemption")
+      console.log("[upsell] ⚠️ network_transaction_id non disponibile, upsell senza MIT")
+    }
+
+    // ✅ FIX: network_transaction_id va dentro card direttamente,
+    // NON dentro mit_exemption (parametro non supportato da Stripe)
+    const cardOptions: Stripe.PaymentIntentCreateParams.PaymentMethodOptions.Card = {
+      request_three_d_secure: "automatic",
+      ...(networkTransactionId && {
+        network_transaction_id: networkTransactionId,
+      }),
     }
 
     let upsellPaymentIntent: Stripe.PaymentIntent
@@ -137,16 +145,7 @@ export async function POST(req: NextRequest) {
         confirm: true,
         description,
         payment_method_options: {
-          card: {
-            request_three_d_secure: "any",
-            // MIT exemption: usa il network_transaction_id del pagamento originale
-            // per esentare dall'autenticazione SCA le transazioni successive
-            ...(networkTransactionId && {
-              mit_exemption: {
-                network_transaction_id: networkTransactionId,
-              },
-            }),
-          },
+          card: cardOptions,
         },
         metadata: {
           session_id: sessionId,
@@ -156,7 +155,6 @@ export async function POST(req: NextRequest) {
         },
       })
     } catch (err: any) {
-      // 3DS richiesto dalla banca
       if (err?.code === "authentication_required") {
         console.log("[upsell] ⚠️ 3DS richiesto dalla banca")
         return NextResponse.json(
@@ -171,7 +169,6 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      // Errori carta (CVC, fondi, ecc.) → non critici, log info
       const cardErrors = [
         "incorrect_cvc",
         "card_declined",
