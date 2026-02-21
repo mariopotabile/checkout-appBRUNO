@@ -488,11 +488,12 @@ function ThankYouContent() {
             <div className="flex justify-center">
               <a href={shopUrl}>
                 <img
-                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/Progetto_senza_titolo_81.png?v=1770929667"
-                  alt="Logo"
-                  className="h-12"
-                  style={{ maxWidth: "180px" }}
-                />
+  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
+  alt="Nimea"
+  className="h-12"
+  style={{ maxWidth: "180px" }}
+/>
+
               </a>
             </div>
           </div>
