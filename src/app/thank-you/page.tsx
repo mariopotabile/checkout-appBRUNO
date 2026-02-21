@@ -16,7 +16,7 @@ type OrderData = {
   currency?: string
   shopDomain?: string
   paymentIntentId?: string
-  rawCart?: { 
+  rawCart?: {
     id?: string
     token?: string
     attributes?: Record<string, any>
@@ -50,7 +50,6 @@ function ThankYouContent() {
   const [error, setError] = useState<string | null>(null)
   const [cartCleared, setCartCleared] = useState(false)
 
-  // 👇 Stati per upsell
   const [upsellLoading, setUpsellLoading] = useState(false)
   const [upsellSuccess, setUpsellSuccess] = useState(false)
   const [upsellError, setUpsellError] = useState<string | null>(null)
@@ -58,7 +57,7 @@ function ThankYouContent() {
   useEffect(() => {
     async function loadOrderDataAndClearCart() {
       if (!sessionId) {
-        setError("Invalid session")
+        setError("Sessione non valida")
         setLoading(false)
         return
       }
@@ -68,23 +67,22 @@ function ThankYouContent() {
         const data = await res.json()
 
         if (!res.ok) {
-          throw new Error(data.error || "Error loading order")
+          throw new Error(data.error || "Errore nel caricamento dell'ordine")
         }
 
-        console.log("[ThankYou] 📦 Cart data received:", data)
+        console.log("[ThankYou] 📦 Dati carrello ricevuti:", data)
         console.log("[ThankYou] 📦 RawCart attributes:", data.rawCart?.attributes)
 
-        // ✅ FREE SHIPPING ALWAYS (0€)
         const subtotal = data.subtotalCents || 0
         const total = data.totalCents || 0
-        const shipping = 0  // ✅ ALWAYS FREE
+        const shipping = 0
         const discount = subtotal > 0 && total > 0 ? subtotal - total : 0
 
-        console.log("[ThankYou] 💰 Calculations:")
-        console.log("  - Subtotal:", subtotal / 100, "€")
-        console.log("  - Discount:", discount / 100, "€")
-        console.log("  - Shipping:", shipping / 100, "€ (FREE)")
-        console.log("  - TOTAL:", total / 100, "€")
+        console.log("[ThankYou] 💰 Calcoli:")
+        console.log("  - Subtotale:", subtotal / 100, "€")
+        console.log("  - Sconto:", discount / 100, "€")
+        console.log("  - Spedizione:", shipping / 100, "€ (GRATIS)")
+        console.log("  - TOTALE:", total / 100, "€")
 
         const processedOrderData: OrderData = {
           shopifyOrderNumber: data.shopifyOrderNumber,
@@ -111,24 +109,19 @@ function ThankYouContent() {
           if ((window as any).fbq) {
             try {
               ;(window as any).fbq("track", "PageView")
-              console.log("[ThankYou] ✅ Facebook Pixel PageView sent")
-              console.log(
-                "[ThankYou] ℹ️ Purchase already tracked by Stripe webhook with complete UTM"
-              )
+              console.log("[ThankYou] ✅ Facebook Pixel PageView inviato")
             } catch (err) {
-              console.error("[ThankYou] ⚠️ Facebook Pixel blocked:", err)
+              console.error("[ThankYou] ⚠️ Facebook Pixel bloccato:", err)
             }
           } else {
-            console.log(
-              "[ThankYou] ⚠️ Facebook Pixel not available (fbq not found)"
-            )
+            console.log("[ThankYou] ⚠️ Facebook Pixel non disponibile (fbq non trovato)")
           }
         }
 
         // GOOGLE ADS CONVERSION
         const sendGoogleConversion = () => {
           if (typeof window !== "undefined" && (window as any).gtag) {
-            console.log("[ThankYou] 📊 Sending Google Ads Purchase...")
+            console.log("[ThankYou] 📊 Invio Google Ads Purchase...")
 
             const orderTotal = total / 100
             const orderId =
@@ -148,17 +141,10 @@ function ThankYouContent() {
               utm_term: cartAttrs._wt_last_term || "",
             })
 
-            console.log("[ThankYou] ✅ Google Ads Purchase sent with UTM")
-            console.log("[ThankYou] Order ID:", orderId)
-            console.log(
-              "[ThankYou] Value:",
-              orderTotal,
-              data.currency || "EUR"
-            )
-            console.log(
-              "[ThankYou] UTM Campaign:",
-              cartAttrs._wt_last_campaign || "direct"
-            )
+            console.log("[ThankYou] ✅ Google Ads Purchase inviato con UTM")
+            console.log("[ThankYou] ID Ordine:", orderId)
+            console.log("[ThankYou] Valore:", orderTotal, data.currency || "EUR")
+            console.log("[ThankYou] UTM Campaign:", cartAttrs._wt_last_campaign || "direct")
           }
         }
 
@@ -177,9 +163,7 @@ function ThankYouContent() {
         // ANALYTICS
         const saveAnalytics = async () => {
           try {
-            console.log(
-              "[ThankYou] 💾 Saving complete analytics to Firebase..."
-            )
+            console.log("[ThankYou] 💾 Salvataggio analytics su Firebase...")
 
             const cartAttrs = data.rawCart?.attributes || {}
 
@@ -252,30 +236,24 @@ function ThankYouContent() {
 
             if (analyticsRes.ok) {
               const result = await analyticsRes.json()
-              console.log(
-                "[ThankYou] ✅ Analytics saved to Firebase - ID:",
-                result.id
-              )
+              console.log("[ThankYou] ✅ Analytics salvate su Firebase - ID:", result.id)
             } else {
               const errorData = await analyticsRes.json()
-              console.error(
-                "[ThankYou] ⚠️ Error saving analytics:",
-                errorData
-              )
+              console.error("[ThankYou] ⚠️ Errore salvataggio analytics:", errorData)
             }
           } catch (err) {
-            console.error("[ThankYou] ⚠️ Error calling analytics:", err)
+            console.error("[ThankYou] ⚠️ Errore chiamata analytics:", err)
           }
         }
 
         saveAnalytics()
 
-        // CLEAR CART
+        // SVUOTA CARRELLO
         if (data.rawCart?.id || data.rawCart?.token) {
           const cartId =
             data.rawCart.id ||
             `gid://shopify/Cart/${data.rawCart.token}`
-          console.log("[ThankYou] 🧹 Starting cart clearing")
+          console.log("[ThankYou] 🧹 Avvio svuotamento carrello")
 
           try {
             const clearRes = await fetch("/api/clear-cart", {
@@ -290,27 +268,21 @@ function ThankYouContent() {
             const clearData = await clearRes.json()
 
             if (clearRes.ok) {
-              console.log("[ThankYou] ✅ Cart cleared successfully")
+              console.log("[ThankYou] ✅ Carrello svuotato con successo")
               setCartCleared(true)
             } else {
-              console.error(
-                "[ThankYou] ⚠️ Cart clearing error:",
-                clearData.error
-              )
+              console.error("[ThankYou] ⚠️ Errore svuotamento carrello:", clearData.error)
             }
           } catch (clearErr) {
-            console.error(
-              "[ThankYou] ⚠️ Error calling clear-cart:",
-              clearErr
-            )
+            console.error("[ThankYou] ⚠️ Errore chiamata clear-cart:", clearErr)
           }
         } else {
-          console.log("[ThankYou] ℹ️ No cart to clear")
+          console.log("[ThankYou] ℹ️ Nessun carrello da svuotare")
         }
 
         setLoading(false)
       } catch (err: any) {
-        console.error("[ThankYou] Error loading order:", err)
+        console.error("[ThankYou] Errore caricamento ordine:", err)
         setError(err.message)
         setLoading(false)
       }
@@ -319,27 +291,26 @@ function ThankYouContent() {
     loadOrderDataAndClearCart()
   }, [sessionId])
 
-  // ✅ LINK SHOP
   const shopUrl = "https://oltreboutique.com"
 
   const formatMoney = (cents: number | undefined) => {
     const value = (cents ?? 0) / 100
-    return new Intl.NumberFormat("en-GB", {
+    return new Intl.NumberFormat("it-IT", {
       style: "currency",
       currency: orderData?.currency || "EUR",
       minimumFractionDigits: 2,
     }).format(value)
   }
 
-  // 👇 CONFIG PRODOTTO UPSELL – CAMBIA QUI variantId + priceCents
+  // 👇 CONFIG PRODOTTO UPSELL
   const UPSELL_CONFIG = {
-    variantId: 55350819750273, // ID variante Shopify upsell
+    variantId: 55350819750273,
     quantity: 1,
-    priceCents: 100, // 1,00 EUR (cambia col tuo prezzo reale)
-    title: "Add 1 more piece at a special price!",
-    subtitle: "Only now, right after your order confirmation.",
-    bullet1: "No extra shipping costs, same parcel.",
-    bullet2: "Perfect as a gift or to always have a spare.",
+    priceCents: 100,
+    title: "Aggiungi 1 pezzo in più a un prezzo speciale!",
+    subtitle: "Solo ora, subito dopo la conferma del tuo ordine.",
+    bullet1: "Nessun costo di spedizione aggiuntivo, stesso pacco.",
+    bullet2: "Perfetto come regalo o per averne sempre uno di scorta.",
   }
 
   const handleUpsell = async () => {
@@ -361,16 +332,16 @@ function ThankYouContent() {
       })
 
       const data = await res.json()
-      console.log("[ThankYou] UPSSELL RESPONSE:", data)
+      console.log("[ThankYou] RISPOSTA UPSELL:", data)
 
       if (!res.ok || !data.success) {
         if (data.requiresAction) {
           setUpsellError(
-            "Your bank requires additional authentication for this extra product."
+            "La tua banca richiede un'autenticazione aggiuntiva per questo prodotto extra."
           )
         } else {
           setUpsellError(
-            data.error || "Unable to add the extra product. Please try again."
+            data.error || "Impossibile aggiungere il prodotto extra. Riprova."
           )
         }
         setUpsellLoading(false)
@@ -380,8 +351,8 @@ function ThankYouContent() {
       setUpsellSuccess(true)
       setUpsellLoading(false)
     } catch (err: any) {
-      console.error("[ThankYou] Upsell error:", err)
-      setUpsellError("Unexpected error while adding the extra product.")
+      console.error("[ThankYou] Errore upsell:", err)
+      setUpsellError("Errore imprevisto durante l'aggiunta del prodotto extra.")
       setUpsellLoading(false)
     }
   }
@@ -391,7 +362,7 @@ function ThankYouContent() {
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-gray-900 mb-4"></div>
-          <p className="text-sm text-gray-600">Loading order...</p>
+          <p className="text-sm text-gray-600">Caricamento ordine...</p>
         </div>
       </div>
     )
@@ -414,13 +385,13 @@ function ThankYouContent() {
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
-          <h1 className="text-2xl font-bold text-gray-900">Order not found</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Ordine non trovato</h1>
           <p className="text-gray-600">{error}</p>
           <a
             href={shopUrl}
             className="inline-block mt-4 px-6 py-3 bg-gray-900 text-white font-medium rounded-md hover:bg-gray-800 transition"
           >
-            Back to home
+            Torna alla home
           </a>
         </div>
       </div>
@@ -442,7 +413,7 @@ function ThankYouContent() {
           'https://connect.facebook.net/en_US/fbevents.js');
           
           fbq('init', '${process.env.NEXT_PUBLIC_FB_PIXEL_ID}');
-          console.log('[ThankYou] ✅ Facebook Pixel initialized (PageView only)');
+          console.log('[ThankYou] ✅ Facebook Pixel inizializzato');
         `}
       </Script>
 
@@ -460,7 +431,7 @@ function ThankYouContent() {
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', 'AW-17391033186');
-            console.log('[ThankYou] ✅ Google Tag initialized');
+            console.log('[ThankYou] ✅ Google Tag inizializzato');
           `,
         }}
       />
@@ -487,13 +458,13 @@ function ThankYouContent() {
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="flex justify-center">
               <a href={shopUrl}>
+                {/* ← LOGO NIMEA aggiornato */}
                 <img
-  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
-  alt="Nimea"
-  className="h-12"
-  style={{ maxWidth: "180px" }}
-/>
-
+                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
+                  alt="Nimea"
+                  className="h-12"
+                  style={{ maxWidth: "180px" }}
+                />
               </a>
             </div>
           </div>
@@ -519,15 +490,15 @@ function ThankYouContent() {
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 text-center mb-2">
-              Order confirmed
+              Ordine confermato
             </h1>
             <p className="text-center text-gray-600 mb-6">
-              Thank you for your purchase!
+              Grazie per il tuo acquisto!
             </p>
 
             {orderData.shopifyOrderNumber && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
-                <p className="text-sm text-gray-600 mb-1">Order number</p>
+                <p className="text-sm text-gray-600 mb-1">Numero ordine</p>
                 <p className="text-2xl font-bold text-gray-900">
                   #{orderData.shopifyOrderNumber}
                 </p>
@@ -552,7 +523,7 @@ function ThankYouContent() {
                   </svg>
                   <div>
                     <p className="text-sm font-medium text-gray-900 mb-1">
-                      Confirmation sent to
+                      Conferma inviata a
                     </p>
                     <p className="text-sm text-gray-600">
                       {orderData.email}
@@ -565,7 +536,7 @@ function ThankYouContent() {
             {orderData.items && orderData.items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 mb-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">
-                  Items purchased
+                  Articoli acquistati
                 </h2>
                 <div className="space-y-4">
                   {orderData.items.map((item, idx) => (
@@ -589,14 +560,12 @@ function ThankYouContent() {
                           </p>
                         )}
                         <p className="text-xs text-gray-500 mt-1">
-                          Quantity: {item.quantity}
+                          Quantità: {item.quantity}
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-sm font-medium text-gray-900">
-                          {formatMoney(
-                            item.linePriceCents || item.priceCents || 0
-                          )}
+                          {formatMoney(item.linePriceCents || item.priceCents || 0)}
                         </p>
                       </div>
                     </div>
@@ -608,28 +577,23 @@ function ThankYouContent() {
             <div className="border-t border-gray-200 pt-6">
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
+                  <span className="text-gray-600">Subtotale</span>
                   <span className="text-gray-900">
                     {formatMoney(orderData.subtotalCents)}
                   </span>
                 </div>
 
-                {orderData.discountCents &&
-                  orderData.discountCents > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>Discount</span>
-                      <span>
-                        -{formatMoney(orderData.discountCents)}
-                      </span>
-                    </div>
-                  )}
+                {orderData.discountCents && orderData.discountCents > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Sconto</span>
+                    <span>-{formatMoney(orderData.discountCents)}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Shipping</span>
+                  <span className="text-gray-600">Spedizione</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-green-600 font-bold">
-                      FREE
-                    </span>
+                    <span className="text-green-600 font-bold">GRATIS</span>
                     <svg
                       className="w-4 h-4 text-green-600"
                       fill="currentColor"
@@ -645,7 +609,7 @@ function ThankYouContent() {
                 </div>
 
                 <div className="flex justify-between text-lg font-semibold pt-3 border-t border-gray-200">
-                  <span>Total</span>
+                  <span>Totale</span>
                   <span className="text-xl">
                     {formatMoney(orderData.totalCents)}
                   </span>
@@ -654,25 +618,24 @@ function ThankYouContent() {
             </div>
           </div>
 
-          {/* 🔥 BLOCCO UPSELL LANDING-STYLE */}
+          {/* 🔥 BLOCCO UPSELL */}
           {!upsellSuccess && (
             <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-6 sm:p-8 mb-8 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
                 <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold bg-red-600 text-white rounded-full uppercase tracking-wide">
-                  Last chance
+                  Ultima occasione
                 </span>
                 <span className="text-xs text-red-700 font-semibold">
-                  Only valid on this page
+                  Valido solo su questa pagina
                 </span>
               </div>
 
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
-                Do you want to add 1 more piece at a special price?
+                Vuoi aggiungere 1 pezzo in più a un prezzo speciale?
               </h2>
               <p className="text-sm text-gray-700 mb-4">
-                Your order is confirmed. Only now you can add an extra
-                product to your shipment without entering card details
-                again.
+                Il tuo ordine è confermato. Solo ora puoi aggiungere un prodotto
+                extra alla tua spedizione senza reinserire i dati della carta.
               </p>
 
               <div className="bg-white border border-yellow-200 rounded-lg p-4 mb-4">
@@ -685,12 +648,10 @@ function ThankYouContent() {
                 <ul className="text-xs text-gray-700 mb-3 space-y-1">
                   <li>• {UPSELL_CONFIG.bullet1}</li>
                   <li>• {UPSELL_CONFIG.bullet2}</li>
-                  <li>• Added to the same name and shipping address</li>
+                  <li>• Aggiunto allo stesso nome e indirizzo di spedizione</li>
                 </ul>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">
-                    Special price now:
-                  </span>
+                  <span className="text-sm text-gray-600">Prezzo speciale ora:</span>
                   <span className="text-lg font-bold text-red-600">
                     {formatMoney(UPSELL_CONFIG.priceCents)}
                   </span>
@@ -709,13 +670,12 @@ function ThankYouContent() {
                 className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed mb-2"
               >
                 {upsellLoading
-                  ? "Adding your extra product..."
-                  : "Yes, add this extra product to my order"}
+                  ? "Aggiunta del prodotto extra in corso..."
+                  : "Sì, aggiungi questo prodotto extra al mio ordine"}
               </button>
               <p className="text-[11px] text-gray-500 text-center">
-                By clicking you authorize a one-time extra charge of{" "}
-                {formatMoney(UPSELL_CONFIG.priceCents)} using the same
-                payment method.
+                Cliccando autorizzi un addebito extra una tantum di{" "}
+                {formatMoney(UPSELL_CONFIG.priceCents)} con lo stesso metodo di pagamento.
               </p>
             </div>
           )}
@@ -723,8 +683,8 @@ function ThankYouContent() {
           {upsellSuccess && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
               <p className="text-sm text-green-800 text-center">
-                ✓ Extra product successfully added. You will receive a
-                separate order confirmation for the upsell.
+                ✓ Prodotto extra aggiunto con successo. Riceverai una conferma
+                d'ordine separata per l'upsell.
               </p>
             </div>
           )}
@@ -745,63 +705,56 @@ function ThankYouContent() {
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              What happens next?
+              Cosa succede adesso?
             </h2>
             <ul className="space-y-3 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">1.</span>
-                <span>
-                  You will receive a confirmation email with all the
-                  details
-                </span>
+                <span>Riceverai un'email di conferma con tutti i dettagli</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">2.</span>
-                <span>
-                  Your order will be prepared within 1-2 business days
-                </span>
+                <span>Il tuo ordine verrà preparato entro 1-2 giorni lavorativi</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-semibold">3.</span>
-                <span>
-                  You will receive shipping tracking via email
-                </span>
+                <span>Riceverai il tracking della spedizione via email</span>
               </li>
             </ul>
           </div>
 
-          {/* BUTTONS */}
+          {/* PULSANTI */}
           <div className="space-y-3">
             <a
               href={shopUrl}
               className="block w-full py-3 px-4 bg-gray-900 text-white text-center font-medium rounded-md hover:bg-gray-800 transition"
             >
-              Back to home
+              Torna alla home
             </a>
             <a
               href={`${shopUrl}/collections/all`}
               className="block w-full py-3 px-4 bg-white text-gray-900 text-center font-medium rounded-md border border-gray-300 hover:bg-gray-50 transition"
             >
-              Continue shopping
+              Continua lo shopping
             </a>
           </div>
 
-          {/* SUPPORT */}
+          {/* SUPPORTO */}
           <div className="text-center mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-2">Need help?</p>
+            <p className="text-sm text-gray-600 mb-2">Hai bisogno di aiuto?</p>
             <a
               href={`${shopUrl}/pages/contatti`}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
-              Contact support →
+              Contatta il supporto →
             </a>
           </div>
 
-          {/* CART CLEARED */}
+          {/* CARRELLO SVUOTATO */}
           {cartCleared && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
               <p className="text-xs text-green-800 text-center">
-                ✓ Cart cleared successfully
+                ✓ Carrello svuotato con successo
               </p>
             </div>
           )}
@@ -811,7 +764,7 @@ function ThankYouContent() {
         <footer className="border-t border-gray-200 py-6 mt-12">
           <div className="max-w-6xl mx-auto px-4 text-center">
             <p className="text-xs text-gray-500">
-              © 2026 All rights reserved.
+              © 2026 Tutti i diritti riservati.
             </p>
           </div>
         </footer>
@@ -833,5 +786,4 @@ export default function ThankYouPage() {
     </Suspense>
   )
 }
-
 
