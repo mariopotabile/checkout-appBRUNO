@@ -59,7 +59,7 @@ type CustomerForm = {
 
 function formatMoney(cents: number | undefined, currency: string = "EUR") {
   const value = (cents ?? 0) / 100
-  return new Intl.NumberFormat("en-GB", {
+  return new Intl.NumberFormat("it-IT", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
@@ -87,7 +87,7 @@ function CheckoutInner({
     city: "",
     postalCode: "",
     province: "",
-    countryCode: "GB",
+    countryCode: "IT", // ← default IT
   })
 
   const [useDifferentBilling, setUseDifferentBilling] = useState(false)
@@ -100,7 +100,7 @@ function CheckoutInner({
     city: "",
     postalCode: "",
     province: "",
-    countryCode: "GB",
+    countryCode: "IT", // ← default IT
   })
 
   const [loading, setLoading] = useState(false)
@@ -167,7 +167,7 @@ function CheckoutInner({
           {
             types: ["address"],
             componentRestrictions: {
-              country: ["gb", "ie", "it", "fr", "de", "es", "at", "be", "nl", "ch", "pt"],
+              country: ["it"], // ← solo IT
             },
             fields: ["address_components", "formatted_address", "geometry"],
           }
@@ -178,7 +178,7 @@ function CheckoutInner({
           handlePlaceSelect()
         })
       } catch (err) {
-        console.error("[Autocomplete] Error:", err)
+        console.error("[Autocomplete] Errore:", err)
       }
     }
 
@@ -188,11 +188,11 @@ function CheckoutInner({
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
       if (!apiKey) {
-        console.error("[Autocomplete] API Key missing")
+        console.error("[Autocomplete] API Key mancante")
         return
       }
 
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=en&callback=initGoogleMaps`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=it&callback=initGoogleMaps`
       script.async = true
       script.defer = true
 
@@ -205,7 +205,7 @@ function CheckoutInner({
       }
 
       script.onerror = () => {
-        console.error("[Autocomplete] Loading error")
+        console.error("[Autocomplete] Errore di caricamento")
       }
 
       document.head.appendChild(script)
@@ -264,12 +264,12 @@ function CheckoutInner({
     setCustomer((prev) => ({ ...prev, [name]: value }))
   }
 
+  // ← MODIFICA: phone rimosso dalla validazione obbligatoria
   function isFormValid() {
-    const shippingValid = 
+    const shippingValid =
       customer.fullName.trim().length > 2 &&
       customer.email.trim().includes("@") &&
       customer.email.trim().length > 5 &&
-      customer.phone.trim().length > 8 &&
       customer.address1.trim().length > 3 &&
       customer.city.trim().length > 1 &&
       customer.postalCode.trim().length > 2 &&
@@ -315,7 +315,6 @@ function CheckoutInner({
       }
 
       if (formHash === lastCalculatedHash && clientSecret) {
-        console.log('[Checkout] 💾 Form unchanged, reusing Payment Intent')
         return
       }
 
@@ -337,8 +336,6 @@ function CheckoutInner({
           const finalDiscountCents = currentDiscountCents > 0 ? currentDiscountCents : 0
           const newTotalCents = subtotalCents - finalDiscountCents + flatShippingCents
 
-          console.log('[Checkout] 🆕 Creating Payment Intent...')
-
           const piRes = await fetch("/api/payment-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -354,7 +351,7 @@ function CheckoutInner({
                 city: customer.city,
                 postalCode: customer.postalCode,
                 province: customer.province,
-                countryCode: customer.countryCode || "GB",
+                countryCode: customer.countryCode || "IT",
               },
             }),
           })
@@ -362,16 +359,15 @@ function CheckoutInner({
           const piData = await piRes.json()
 
           if (!piRes.ok || !piData.clientSecret) {
-            throw new Error(piData.error || "Payment creation error")
+            throw new Error(piData.error || "Errore nella creazione del pagamento")
           }
 
-          console.log('[Checkout] ✅ ClientSecret received')
           setClientSecret(piData.clientSecret)
           setLastCalculatedHash(formHash)
           setIsCalculatingShipping(false)
         } catch (err: any) {
-          console.error("Payment creation error:", err)
-          setShippingError(err.message || "Error calculating total")
+          console.error("Errore creazione pagamento:", err)
+          setShippingError(err.message || "Errore nel calcolo del totale")
           setIsCalculatingShipping(false)
         }
       }, 1000)
@@ -415,17 +411,17 @@ function CheckoutInner({
     setSuccess(false)
 
     if (!isFormValid()) {
-      setError("Please fill in all required fields")
+      setError("Compila tutti i campi obbligatori")
       return
     }
 
     if (!stripe || !elements) {
-      setError("Stripe not ready")
+      setError("Stripe non pronto")
       return
     }
 
     if (!clientSecret) {
-      setError("Payment Intent not created")
+      setError("Pagamento non ancora inizializzato")
       return
     }
 
@@ -434,8 +430,7 @@ function CheckoutInner({
 
       const { error: submitError } = await elements.submit()
       if (submitError) {
-        console.error("Elements submit error:", submitError)
-        setError(submitError.message || "Validation error")
+        setError(submitError.message || "Errore di validazione")
         setLoading(false)
         return
       }
@@ -461,7 +456,7 @@ function CheckoutInner({
                 city: finalBillingAddress.city,
                 postal_code: finalBillingAddress.postalCode,
                 state: finalBillingAddress.province,
-                country: finalBillingAddress.countryCode || "GB",
+                country: finalBillingAddress.countryCode || "IT",
               },
             },
 
@@ -481,8 +476,7 @@ function CheckoutInner({
       })
 
       if (stripeError) {
-        console.error("Stripe error:", stripeError)
-        setError(stripeError.message || "Payment failed")
+        setError(stripeError.message || "Pagamento fallito")
         setLoading(false)
         return
       }
@@ -494,8 +488,7 @@ function CheckoutInner({
         window.location.href = `/thank-you?sessionId=${sessionId}`
       }, 2000)
     } catch (err: any) {
-      console.error("Payment error:", err)
-      setError(err.message || "Unexpected error")
+      setError(err.message || "Errore imprevisto")
       setLoading(false)
     }
   }
@@ -677,9 +670,10 @@ function CheckoutInner({
           <div className="max-w-6xl mx-auto px-4 py-4">
             <div className="flex justify-between items-center">
               <a href={cartUrl} className="flex items-center gap-2">
+                {/* ← LOGO NIMEA aggiornato */}
                 <img
-                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/Progetto_senza_titolo_81.png?v=1770929667"
-                  alt="Logo"
+                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
+                  alt="Nimea"
                   className="h-10"
                   style={{ maxWidth: '160px' }}
                 />
@@ -691,14 +685,14 @@ function CheckoutInner({
                   <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                   </svg>
-                  <span className="font-medium">Secure SSL</span>
+                  <span className="font-medium">SSL Sicuro</span>
                 </div>
 
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full border border-emerald-200">
                   <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
-                  <span className="text-xs font-semibold text-emerald-700">Protected Payment</span>
+                  <span className="text-xs font-semibold text-emerald-700">Pagamento Protetto</span>
                 </div>
               </div>
 
@@ -707,7 +701,7 @@ function CheckoutInner({
                 <svg className="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                 </svg>
-                <span className="text-xs font-semibold text-emerald-700">Secure</span>
+                <span className="text-xs font-semibold text-emerald-700">Sicuro</span>
               </div>
             </div>
           </div>
@@ -733,7 +727,7 @@ function CheckoutInner({
                 <path d="M4 6L8 10L12 6" stroke="#333" strokeWidth="2" strokeLinecap="round" />
               </svg>
               <span className="text-sm font-medium text-blue-600">
-                {orderSummaryExpanded ? 'Hide' : 'Show'} order summary
+                {orderSummaryExpanded ? 'Nascondi' : 'Mostra'} riepilogo ordine
               </span>
             </div>
             <span className="text-base font-semibold">{formatMoney(totalToPayCents, currency)}</span>
@@ -771,24 +765,24 @@ function CheckoutInner({
 
               <div className="border-t border-gray-200 pt-3 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
+                  <span className="text-gray-600">Subtotale</span>
                   <span className="text-gray-900">{formatMoney(subtotalCents, currency)}</span>
                 </div>
 
                 {discountCents > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Discount</span>
+                    <span>Sconto</span>
                     <span>-{formatMoney(discountCents, currency)}</span>
                   </div>
                 )}
 
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Shipping</span>
-                  <span className="text-green-600 font-medium">FREE</span>
+                  <span className="text-gray-600">Spedizione</span>
+                  <span className="text-green-600 font-medium">GRATIS</span>
                 </div>
 
                 <div className="flex justify-between text-base font-semibold pt-3 border-t border-gray-200">
-                  <span>Total</span>
+                  <span>Totale</span>
                   <span className="text-lg">{formatMoney(totalToPayCents, currency)}</span>
                 </div>
               </div>
@@ -803,7 +797,7 @@ function CheckoutInner({
               <form onSubmit={handleSubmit} className="space-y-5">
 
                 <div className="shopify-section">
-                  <h2 className="shopify-section-title">Contact</h2>
+                  <h2 className="shopify-section-title">Contatto</h2>
                   
                   <div>
                     <label className="shopify-label">Email</label>
@@ -813,30 +807,31 @@ function CheckoutInner({
                       value={customer.email}
                       onChange={handleChange}
                       className="shopify-input"
-                      placeholder="john.smith@example.com"
+                      placeholder="mario.rossi@esempio.it"
                       required
                       autoComplete="email"
                     />
                   </div>
 
                   <div className="flex items-start gap-2 mt-4">
-                    <input 
-                      type="checkbox" 
-                      id="emailUpdates" 
-                      className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
+                    <input
+                      type="checkbox"
+                      id="emailUpdates"
+                      className="w-4 h-4 mt-0.5 flex-shrink-0 rounded"
                     />
                     <label htmlFor="emailUpdates" className="text-xs text-gray-600 leading-relaxed">
-                      Email me with news and offers
+                      Inviami novità e offerte via email
                     </label>
                   </div>
                 </div>
 
                 <div className="shopify-section">
-                  <h2 className="shopify-section-title">Delivery</h2>
+                  <h2 className="shopify-section-title">Consegna</h2>
                   
                   <div className="space-y-4">
+                    {/* ← Solo IT */}
                     <div>
-                      <label className="shopify-label">Country / Region</label>
+                      <label className="shopify-label">Paese / Regione</label>
                       <select
                         name="countryCode"
                         value={customer.countryCode}
@@ -844,23 +839,13 @@ function CheckoutInner({
                         className="shopify-input"
                         required
                       >
-                        <option value="GB">United Kingdom</option>
-                        <option value="IE">Ireland</option>
-                        <option value="IT">Italy</option>
-                        <option value="FR">France</option>
-                        <option value="DE">Germany</option>
-                        <option value="ES">Spain</option>
-                        <option value="AT">Austria</option>
-                        <option value="BE">Belgium</option>
-                        <option value="NL">Netherlands</option>
-                        <option value="CH">Switzerland</option>
-                        <option value="PT">Portugal</option>
+                        <option value="IT">Italia</option>
                       </select>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="shopify-label">First name</label>
+                        <label className="shopify-label">Nome</label>
                         <input
                           type="text"
                           name="firstName"
@@ -872,14 +857,14 @@ function CheckoutInner({
                             }))
                           }}
                           className="shopify-input"
-                          placeholder="John"
+                          placeholder="Mario"
                           required
                           autoComplete="given-name"
                         />
                       </div>
 
                       <div>
-                        <label className="shopify-label">Last name</label>
+                        <label className="shopify-label">Cognome</label>
                         <input
                           type="text"
                           name="lastName"
@@ -891,7 +876,7 @@ function CheckoutInner({
                             }))
                           }}
                           className="shopify-input"
-                          placeholder="Smith"
+                          placeholder="Rossi"
                           required
                           autoComplete="family-name"
                         />
@@ -899,17 +884,17 @@ function CheckoutInner({
                     </div>
 
                     <div>
-                      <label className="shopify-label">Company (optional)</label>
+                      <label className="shopify-label">Azienda (opzionale)</label>
                       <input
                         type="text"
                         className="shopify-input"
-                        placeholder="Company name"
+                        placeholder="Nome azienda"
                         autoComplete="organization"
                       />
                     </div>
 
                     <div>
-                      <label className="shopify-label">Address</label>
+                      <label className="shopify-label">Indirizzo</label>
                       <input
                         ref={addressInputRef}
                         type="text"
@@ -917,49 +902,49 @@ function CheckoutInner({
                         value={customer.address1}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder="123 High Street"
+                        placeholder="Via Roma 1"
                         required
                         autoComplete="address-line1"
                       />
                     </div>
 
                     <div>
-                      <label className="shopify-label">Apartment, suite, etc. (optional)</label>
+                      <label className="shopify-label">Interno, scala, ecc. (opzionale)</label>
                       <input
                         type="text"
                         name="address2"
                         value={customer.address2}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder="Flat 4B"
+                        placeholder="Interno 4B"
                         autoComplete="address-line2"
                       />
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="shopify-label">Postcode</label>
+                        <label className="shopify-label">CAP</label>
                         <input
                           type="text"
                           name="postalCode"
                           value={customer.postalCode}
                           onChange={handleChange}
                           className="shopify-input"
-                          placeholder="SW1A 1AA"
+                          placeholder="20121"
                           required
                           autoComplete="postal-code"
                         />
                       </div>
 
                       <div className="col-span-2">
-                        <label className="shopify-label">City</label>
+                        <label className="shopify-label">Città</label>
                         <input
                           type="text"
                           name="city"
                           value={customer.city}
                           onChange={handleChange}
                           className="shopify-input"
-                          placeholder="London"
+                          placeholder="Milano"
                           required
                           autoComplete="address-level2"
                         />
@@ -967,89 +952,79 @@ function CheckoutInner({
                     </div>
 
                     <div>
-                      <label className="shopify-label">County / State</label>
+                      <label className="shopify-label">Provincia</label>
                       <input
                         type="text"
                         name="province"
                         value={customer.province}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder="Greater London"
+                        placeholder="MI"
                         required
                         autoComplete="address-level1"
                       />
                     </div>
 
+                    {/* ← Telefono: non più required */}
                     <div>
-                      <label className="shopify-label">Phone</label>
+                      <label className="shopify-label">Telefono (opzionale)</label>
                       <input
                         type="tel"
                         name="phone"
                         value={customer.phone}
                         onChange={handleChange}
                         className="shopify-input"
-                        placeholder="+44 20 1234 5678"
-                        required
+                        placeholder="+39 02 1234 5678"
                         autoComplete="tel"
                       />
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <input 
-                        type="checkbox" 
-                        id="saveInfo" 
-                        className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
+                      <input
+                        type="checkbox"
+                        id="saveInfo"
+                        className="w-4 h-4 mt-0.5 flex-shrink-0 rounded"
                       />
                       <label htmlFor="saveInfo" className="text-xs text-gray-600 leading-relaxed">
-                        Save this information for next time
+                        Salva queste informazioni per la prossima volta
                       </label>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-2 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
-                  <input 
-                    type="checkbox" 
-                    id="differentBilling" 
+                  <input
+                    type="checkbox"
+                    id="differentBilling"
                     checked={useDifferentBilling}
                     onChange={(e) => setUseDifferentBilling(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 flex-shrink-0 rounded" 
+                    className="w-4 h-4 mt-0.5 flex-shrink-0 rounded"
                   />
                   <label htmlFor="differentBilling" className="text-sm text-gray-700 leading-relaxed cursor-pointer font-medium">
-                    Use a different billing address
+                    Usa un indirizzo di fatturazione diverso
                   </label>
                 </div>
 
                 {useDifferentBilling && (
                   <div className="shopify-section">
-                    <h2 className="shopify-section-title">Billing address</h2>
+                    <h2 className="shopify-section-title">Indirizzo di fatturazione</h2>
                     
                     <div className="space-y-4">
                       <div>
-                        <label className="shopify-label">Country / Region</label>
+                        <label className="shopify-label">Paese / Regione</label>
                         <select
                           value={billingAddress.countryCode}
                           onChange={(e) => setBillingAddress(prev => ({ ...prev, countryCode: e.target.value }))}
                           className="shopify-input"
                           required
                         >
-                          <option value="GB">United Kingdom</option>
-                          <option value="IE">Ireland</option>
-                          <option value="IT">Italy</option>
-                          <option value="FR">France</option>
-                          <option value="DE">Germany</option>
-                          <option value="ES">Spain</option>
-                          <option value="AT">Austria</option>
-                          <option value="BE">Belgium</option>
-                          <option value="NL">Netherlands</option>
-                          <option value="CH">Switzerland</option>
-                          <option value="PT">Portugal</option>
+                          <option value="IT">Italia</option>
                         </select>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="shopify-label">First name</label>
+                          <label className="shopify-label">Nome</label>
                           <input
                             type="text"
                             value={billingFirstName}
@@ -1065,7 +1040,7 @@ function CheckoutInner({
                         </div>
 
                         <div>
-                          <label className="shopify-label">Last name</label>
+                          <label className="shopify-label">Cognome</label>
                           <input
                             type="text"
                             value={billingLastName}
@@ -1082,7 +1057,7 @@ function CheckoutInner({
                       </div>
 
                       <div>
-                        <label className="shopify-label">Address</label>
+                        <label className="shopify-label">Indirizzo</label>
                         <input
                           type="text"
                           value={billingAddress.address1}
@@ -1093,7 +1068,7 @@ function CheckoutInner({
                       </div>
 
                       <div>
-                        <label className="shopify-label">Apartment, suite, etc. (optional)</label>
+                        <label className="shopify-label">Interno, scala, ecc. (opzionale)</label>
                         <input
                           type="text"
                           value={billingAddress.address2}
@@ -1104,7 +1079,7 @@ function CheckoutInner({
 
                       <div className="grid grid-cols-3 gap-3">
                         <div>
-                          <label className="shopify-label">Postcode</label>
+                          <label className="shopify-label">CAP</label>
                           <input
                             type="text"
                             value={billingAddress.postalCode}
@@ -1115,7 +1090,7 @@ function CheckoutInner({
                         </div>
 
                         <div className="col-span-2">
-                          <label className="shopify-label">City</label>
+                          <label className="shopify-label">Città</label>
                           <input
                             type="text"
                             value={billingAddress.city}
@@ -1127,7 +1102,7 @@ function CheckoutInner({
                       </div>
 
                       <div>
-                        <label className="shopify-label">County / State</label>
+                        <label className="shopify-label">Provincia</label>
                         <input
                           type="text"
                           value={billingAddress.province}
@@ -1143,13 +1118,13 @@ function CheckoutInner({
                 {isFormValid() && (
                   <>
                     <div className="shopify-section">
-                      <h2 className="shopify-section-title">Shipping method</h2>
+                      <h2 className="shopify-section-title">Metodo di spedizione</h2>
                       <div className="border border-gray-300 rounded-xl p-4 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50">
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">Express Delivery</p>
-                          <p className="text-xs text-gray-600 mt-1">Delivery in 2-4 business days</p>
+                          <p className="text-sm font-semibold text-gray-900">Consegna Express</p>
+                          <p className="text-xs text-gray-600 mt-1">Consegna in 2-4 giorni lavorativi</p>
                         </div>
-                        <span className="text-green-600 font-medium">FREE</span>
+                        <span className="text-green-600 font-medium">GRATIS</span>
                       </div>
                     </div>
 
@@ -1157,26 +1132,16 @@ function CheckoutInner({
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-4 shadow-sm">
                       <div className="flex items-start gap-4">
                         <div className="flex -space-x-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
-                            J
-                          </div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
-                            M
-                          </div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
-                            S
-                          </div>
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
-                            2K+
-                          </div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">J</div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">M</div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">S</div>
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">2K+</div>
                         </div>
 
                         <div className="flex-1">
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="text-2xl">🎉</span>
-                            <p className="text-sm font-bold text-gray-900">
-                              Over 2,000+ happy customers
-                            </p>
+                            <p className="text-sm font-bold text-gray-900">Oltre 2.000+ clienti soddisfatti</p>
                           </div>
                           <div className="flex items-center gap-1 mb-1">
                             {[...Array(5)].map((_, i) => (
@@ -1185,10 +1150,10 @@ function CheckoutInner({
                               </svg>
                             ))}
                             <span className="text-xs font-semibold text-gray-700 ml-1">4.9/5</span>
-                            <span className="text-xs text-gray-500">(1,847 reviews)</span>
+                            <span className="text-xs text-gray-500">(1.847 recensioni)</span>
                           </div>
                           <p className="text-xs text-gray-600">
-                            ✓ Last order: <strong>3 minutes ago</strong>
+                            ✓ Ultimo ordine: <strong>3 minuti fa</strong>
                           </p>
                         </div>
                       </div>
@@ -1197,12 +1162,11 @@ function CheckoutInner({
                 )}
 
                 <div className="shopify-section">
-                  <h2 className="shopify-section-title">Payment</h2>
+                  <h2 className="shopify-section-title">Pagamento</h2>
                   
-                  {/* PAYMENT METHODS */}
                   <div className="mb-4 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-700">Accepted methods:</span>
+                      <span className="text-xs font-semibold text-gray-700">Metodi accettati:</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="h-8 px-3 bg-white border border-gray-300 rounded-lg flex items-center shadow-sm">
@@ -1224,7 +1188,6 @@ function CheckoutInner({
                     </div>
                   </div>
 
-                  {/* SECURITY ROW */}
                   <div className="mb-4 flex items-center justify-center gap-4 text-xs text-gray-600 bg-blue-50 py-2.5 px-3 rounded-xl border border-blue-100">
                     <div className="flex items-center gap-1.5">
                       <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -1247,7 +1210,7 @@ function CheckoutInner({
                   </div>
 
                   <p className="text-xs text-gray-600 mb-4">
-                    🔒 Your data is never stored. Protected transaction.
+                    🔒 I tuoi dati non vengono mai salvati. Transazione protetta.
                   </p>
                   
                   {isCalculatingShipping && (
@@ -1256,7 +1219,7 @@ function CheckoutInner({
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <p className="text-sm text-blue-800 font-medium">Calculating...</p>
+                      <p className="text-sm text-blue-800 font-medium">Calcolo in corso...</p>
                     </div>
                   )}
 
@@ -1268,7 +1231,7 @@ function CheckoutInner({
 
                   {clientSecret && !isCalculatingShipping && (
                     <div className="border border-gray-300 rounded-xl p-4 bg-white shadow-sm mb-4">
-                      <PaymentElement 
+                      <PaymentElement
                         options={{
                           fields: {
                             billingDetails: {
@@ -1280,8 +1243,8 @@ function CheckoutInner({
                           },
                           defaultValues: {
                             billingDetails: {
-                              name: useDifferentBilling 
-                                ? billingAddress.fullName 
+                              name: useDifferentBilling
+                                ? billingAddress.fullName
                                 : customer.fullName
                             }
                           }
@@ -1293,7 +1256,7 @@ function CheckoutInner({
                   {!clientSecret && !isCalculatingShipping && (
                     <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
                       <p className="text-sm text-gray-600 text-center">
-                        Fill in all fields to view payment methods
+                        Compila tutti i campi per visualizzare i metodi di pagamento
                       </p>
                     </div>
                   )}
@@ -1316,7 +1279,7 @@ function CheckoutInner({
                       <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <p className="text-sm text-green-700 font-medium">Payment completed! Redirecting...</p>
+                      <p className="text-sm text-green-700 font-medium">Pagamento completato! Reindirizzamento in corso...</p>
                     </div>
                   </div>
                 )}
@@ -1332,19 +1295,19 @@ function CheckoutInner({
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Processing...
+                      Elaborazione in corso...
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                       </svg>
-                      Pay securely
+                      Paga in modo sicuro
                     </span>
                   )}
                 </button>
 
-                {/* FINAL GUARANTEES */}
+                {/* GARANZIE FINALI */}
                 <div className="mt-6 space-y-3">
                   <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl border border-green-200">
                     <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -1353,9 +1316,9 @@ function CheckoutInner({
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Money-Back Guarantee</p>
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Garanzia Soddisfatti o Rimborsati</p>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        14 days to return the product and receive a full refund
+                        14 giorni per restituire il prodotto e ricevere un rimborso completo
                       </p>
                     </div>
                   </div>
@@ -1368,9 +1331,9 @@ function CheckoutInner({
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Tracked Shipping</p>
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Spedizione Tracciata</p>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        Tracking via email to monitor your package in real-time
+                        Tracciamento via email per monitorare il tuo pacco in tempo reale
                       </p>
                     </div>
                   </div>
@@ -1382,9 +1345,9 @@ function CheckoutInner({
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Dedicated Customer Support</p>
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">Assistenza Clienti Dedicata</p>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        Team available 7 days a week via email or chat
+                        Team disponibile 7 giorni su 7 via email o chat
                       </p>
                     </div>
                   </div>
@@ -1395,7 +1358,7 @@ function CheckoutInner({
                     <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                     </svg>
-                    <span>256-bit SSL Encryption</span>
+                    <span>Crittografia SSL a 256 bit</span>
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
                     Powered by Stripe • PCI DSS Level 1 Certified
@@ -1409,7 +1372,7 @@ function CheckoutInner({
             <div className="hidden lg:block">
               <div className="sticky top-24">
                 <div className="shopify-section">
-                  <h3 className="shopify-section-title">Order summary</h3>
+                  <h3 className="shopify-section-title">Riepilogo ordine</h3>
 
                   <div className="space-y-4 mb-6">
                     {cart.items.map((item, idx) => (
@@ -1441,24 +1404,24 @@ function CheckoutInner({
 
                   <div className="border-t border-gray-200 pt-4 space-y-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal</span>
+                      <span className="text-gray-600">Subtotale</span>
                       <span className="text-gray-900 font-medium">{formatMoney(subtotalCents, currency)}</span>
                     </div>
 
                     {discountCents > 0 && (
                       <div className="flex justify-between text-green-600">
-                        <span className="font-medium">Discount</span>
+                        <span className="font-medium">Sconto</span>
                         <span className="font-semibold">-{formatMoney(discountCents, currency)}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Shipping</span>
-                      <span className="text-green-600 font-medium">FREE</span>
+                      <span className="text-gray-600">Spedizione</span>
+                      <span className="text-green-600 font-medium">GRATIS</span>
                     </div>
 
                     <div className="flex justify-between text-lg font-bold pt-4 border-t border-gray-200">
-                      <span>Total</span>
+                      <span>Totale</span>
                       <span className="text-xl">{formatMoney(totalToPayCents, currency)}</span>
                     </div>
                   </div>
@@ -1485,7 +1448,7 @@ function CheckoutPageContent() {
   useEffect(() => {
     async function load() {
       if (!sessionId) {
-        setError("Invalid session: sessionId missing.")
+        setError("Sessione non valida: sessionId mancante.")
         setLoading(false)
         return
       }
@@ -1500,9 +1463,7 @@ function CheckoutPageContent() {
         const data: CartSessionResponse & { error?: string } = await res.json()
 
         if (!res.ok || (data as any).error) {
-          setError(
-            data.error || "Error retrieving cart. Please try again.",
-          )
+          setError(data.error || "Errore nel recupero del carrello. Riprova.")
           setLoading(false)
           return
         }
@@ -1513,31 +1474,25 @@ function CheckoutPageContent() {
           const pkRes = await fetch('/api/stripe-status')
           
           if (!pkRes.ok) {
-            throw new Error('stripe-status API unavailable')
+            throw new Error('API stripe-status non disponibile')
           }
           
           const pkData = await pkRes.json()
 
           if (pkData.publishableKey) {
-            console.log('[Checkout] ✅ Publishable key loaded')
-            console.log('[Checkout] ✅ Account:', pkData.accountLabel)
             setStripePromise(loadStripe(pkData.publishableKey))
           } else {
-            throw new Error('PublishableKey not received from API')
+            throw new Error('PublishableKey non ricevuto dalla API')
           }
         } catch (err) {
-          console.error('[Checkout] ❌ Error loading stripe-status:', err)
-          setError('Unable to initialize payment system. Please try again.')
+          setError('Impossibile inizializzare il sistema di pagamento. Riprova.')
           setLoading(false)
           return
         }
 
         setLoading(false)
       } catch (err: any) {
-        console.error("Checkout error:", err)
-        setError(
-          err?.message || "Unexpected error loading checkout.",
-        )
+        setError(err?.message || "Errore imprevisto nel caricamento del checkout.")
         setLoading(false)
       }
     }
@@ -1550,7 +1505,7 @@ function CheckoutPageContent() {
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
-          <p className="text-sm text-gray-600 font-medium">Loading checkout…</p>
+          <p className="text-sm text-gray-600 font-medium">Caricamento checkout…</p>
         </div>
       </div>
     )
@@ -1563,10 +1518,10 @@ function CheckoutPageContent() {
           <svg className="w-16 h-16 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <h1 className="text-xl font-bold text-gray-900">Unable to load checkout</h1>
+          <h1 className="text-xl font-bold text-gray-900">Impossibile caricare il checkout</h1>
           <p className="text-sm text-gray-600">{error}</p>
           <p className="text-xs text-gray-500">
-            Please return to the site and try opening checkout again.
+            Torna al sito e prova ad aprire nuovamente il checkout.
           </p>
         </div>
       </div>
@@ -1578,7 +1533,7 @@ function CheckoutPageContent() {
     amount: 1000,
     currency: (cart.currency || 'eur').toLowerCase(),
     paymentMethodTypes: ['card'],
-  setupFutureUsage: "off_session" as const,   // ← AGGIUNGI questa riga
+    setupFutureUsage: "off_session" as const,
     appearance: {
       theme: "stripe" as const,
       variables: {
@@ -1608,7 +1563,7 @@ export default function CheckoutPage() {
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
-            <p className="text-sm text-gray-600 font-medium">Loading…</p>
+            <p className="text-sm text-gray-600 font-medium">Caricamento…</p>
           </div>
         </div>
       }
