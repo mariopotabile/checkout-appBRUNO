@@ -565,7 +565,7 @@ function SpecialOffer1Content() {
                     )}
                   </button>
 
-                  <button className="btn-no" onClick={goToOffer2} disabled={loading}>
+                  <button className="btn-no" onClick={handleYes} disabled={loading}>
                     No grazie, voglio rinunciare a questa offerta
                   </button>
                 </div>
