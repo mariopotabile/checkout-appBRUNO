@@ -442,7 +442,7 @@ function CheckoutInner({
         clientSecret,
 
         confirmParams: {
-          return_url: `${window.location.origin}/offerta-speciale?sessionId=${sessionId}`,
+          return_url: `${window.location.origin}/special-offer?sessionId=${sessionId}`,
 
           payment_method_data: {
             billing_details: {
@@ -485,7 +485,7 @@ function CheckoutInner({
       setLoading(false)
 
       setTimeout(() => {
-        window.location.href = `/offerta-speciale?sessionId=${sessionId}`
+        window.location.href = `/special-offer?sessionId=${sessionId}`
       }, 2000)
     } catch (err: any) {
       setError(err.message || "Errore imprevisto")
