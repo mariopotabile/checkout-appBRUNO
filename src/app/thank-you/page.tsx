@@ -1,773 +1,563 @@
-// src/app/thank-you/page.tsx
 "use client"
 
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import Script from "next/script"
 
-type OrderData = {
-  shopifyOrderNumber?: string
-  shopifyOrderId?: string
-  email?: string
-  subtotalCents?: number
-  shippingCents?: number
-  discountCents?: number
-  totalCents?: number
-  currency?: string
-  shopDomain?: string
-  paymentIntentId?: string
-  rawCart?: {
-    id?: string
-    token?: string
-    attributes?: Record<string, any>
-  }
-  items?: Array<{
-    id?: string
-    variant_id?: string
-    title: string
-    quantity: number
-    image?: string
-    variantTitle?: string
-    priceCents?: number
-    linePriceCents?: number
-  }>
+export const dynamic = "force-dynamic"
+
+type OrderItem = {
+  id: string | number
+  title: string
+  variantTitle?: string
+  quantity: number
+  priceCents?: number
+  linePriceCents?: number
+  image?: string
+}
+
+type SessionData = {
+  sessionId: string
+  shopifyOrderNumber?: string | number
   customer?: {
-    email?: string
-    phone?: string
     fullName?: string
+    email?: string
+    address1?: string
     city?: string
     postalCode?: string
+    province?: string
     countryCode?: string
   }
+  items?: OrderItem[]
+  totalCents?: number
+  currency?: string
+  upsellStatus?: string
+  upsellProduct?: {
+    productTitle?: string
+    variantTitle?: string
+    priceCents?: number
+    image?: string
+  }
+  upsellAmountCents?: number
+}
+
+function formatMoney(cents: number | undefined, currency = "EUR") {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format((cents ?? 0) / 100)
 }
 
 function ThankYouContent() {
   const searchParams = useSearchParams()
-  const sessionId = searchParams.get("sessionId")
+  const sessionId = searchParams.get("sessionId") || ""
 
-  const [orderData, setOrderData] = useState<OrderData | null>(null)
+  const [session, setSession] = useState<SessionData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [cartCleared, setCartCleared] = useState(false)
-
-  const [upsellLoading, setUpsellLoading] = useState(false)
-  const [upsellSuccess, setUpsellSuccess] = useState(false)
-  const [upsellError, setUpsellError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadOrderDataAndClearCart() {
-      if (!sessionId) {
-        setError("Sessione non valida")
-        setLoading(false)
-        return
-      }
-
+    async function load() {
+      if (!sessionId) { setLoading(false); return }
       try {
         const res = await fetch(`/api/cart-session?sessionId=${sessionId}`)
         const data = await res.json()
-
-        if (!res.ok) {
-          throw new Error(data.error || "Errore nel caricamento dell'ordine")
-        }
-
-        console.log("[ThankYou] 📦 Dati carrello ricevuti:", data)
-        console.log("[ThankYou] 📦 RawCart attributes:", data.rawCart?.attributes)
-
-        const subtotal = data.subtotalCents || 0
-        const total = data.totalCents || 0
-        const shipping = 0
-        const discount = subtotal > 0 && total > 0 ? subtotal - total : 0
-
-        console.log("[ThankYou] 💰 Calcoli:")
-        console.log("  - Subtotale:", subtotal / 100, "€")
-        console.log("  - Sconto:", discount / 100, "€")
-        console.log("  - Spedizione:", shipping / 100, "€ (GRATIS)")
-        console.log("  - TOTALE:", total / 100, "€")
-
-        const processedOrderData: OrderData = {
-          shopifyOrderNumber: data.shopifyOrderNumber,
-          shopifyOrderId: data.shopifyOrderId,
-          email: data.customer?.email,
-          subtotalCents: subtotal,
-          shippingCents: shipping,
-          discountCents: discount > 0 ? discount : 0,
-          totalCents: total,
-          currency: data.currency || "EUR",
-          shopDomain: data.shopDomain,
-          paymentIntentId: data.paymentIntentId,
-          rawCart: data.rawCart,
-          items: data.items || [],
-          customer: data.customer,
-        }
-
-        setOrderData(processedOrderData)
-
-        // PIXEL FACEBOOK PAGEVIEW
-        if (typeof window !== "undefined") {
-          console.log("[ThankYou] 📊 Facebook Pixel PageView")
-
-          if ((window as any).fbq) {
-            try {
-              ;(window as any).fbq("track", "PageView")
-              console.log("[ThankYou] ✅ Facebook Pixel PageView inviato")
-            } catch (err) {
-              console.error("[ThankYou] ⚠️ Facebook Pixel bloccato:", err)
-            }
-          } else {
-            console.log("[ThankYou] ⚠️ Facebook Pixel non disponibile (fbq non trovato)")
-          }
-        }
-
-        // GOOGLE ADS CONVERSION
-        const sendGoogleConversion = () => {
-          if (typeof window !== "undefined" && (window as any).gtag) {
-            console.log("[ThankYou] 📊 Invio Google Ads Purchase...")
-
-            const orderTotal = total / 100
-            const orderId =
-              data.shopifyOrderNumber || data.shopifyOrderId || sessionId
-
-            const cartAttrs = data.rawCart?.attributes || {}
-
-            ;(window as any).gtag("event", "conversion", {
-              send_to: "AW-17391033186/G-u0CLKyxbsbEOK22ORA",
-              value: orderTotal,
-              currency: data.currency || "EUR",
-              transaction_id: orderId,
-              utm_source: cartAttrs._wt_last_source || "",
-              utm_medium: cartAttrs._wt_last_medium || "",
-              utm_campaign: cartAttrs._wt_last_campaign || "",
-              utm_content: cartAttrs._wt_last_content || "",
-              utm_term: cartAttrs._wt_last_term || "",
-            })
-
-            console.log("[ThankYou] ✅ Google Ads Purchase inviato con UTM")
-            console.log("[ThankYou] ID Ordine:", orderId)
-            console.log("[ThankYou] Valore:", orderTotal, data.currency || "EUR")
-            console.log("[ThankYou] UTM Campaign:", cartAttrs._wt_last_campaign || "direct")
-          }
-        }
-
-        if ((window as any).gtag) {
-          sendGoogleConversion()
-        } else {
-          const checkGtag = setInterval(() => {
-            if ((window as any).gtag) {
-              clearInterval(checkGtag)
-              sendGoogleConversion()
-            }
-          }, 100)
-          setTimeout(() => clearInterval(checkGtag), 5000)
-        }
-
-        // ANALYTICS
-        const saveAnalytics = async () => {
-          try {
-            console.log("[ThankYou] 💾 Salvataggio analytics su Firebase...")
-
-            const cartAttrs = data.rawCart?.attributes || {}
-
-            const analyticsData = {
-              orderId: processedOrderData.shopifyOrderId || sessionId,
-              orderNumber: processedOrderData.shopifyOrderNumber || null,
-              sessionId: sessionId,
-              timestamp: new Date().toISOString(),
-              value: total / 100,
-              valueCents: total,
-              subtotalCents: subtotal,
-              shippingCents: shipping,
-              discountCents: discount,
-              currency: data.currency || "EUR",
-              itemCount: (data.items || []).length,
-              utm: {
-                source: cartAttrs._wt_last_source || null,
-                medium: cartAttrs._wt_last_medium || null,
-                campaign: cartAttrs._wt_last_campaign || null,
-                content: cartAttrs._wt_last_content || null,
-                term: cartAttrs._wt_last_term || null,
-                fbclid: cartAttrs._wt_last_fbclid || null,
-                gclid: cartAttrs._wt_last_gclid || null,
-                campaign_id: cartAttrs._wt_last_campaign_id || null,
-                adset_id: cartAttrs._wt_last_adset_id || null,
-                adset_name: cartAttrs._wt_last_adset_name || null,
-                ad_id: cartAttrs._wt_last_ad_id || null,
-                ad_name: cartAttrs._wt_last_ad_name || null,
-              },
-              utm_first: {
-                source: cartAttrs._wt_first_source || null,
-                medium: cartAttrs._wt_first_medium || null,
-                campaign: cartAttrs._wt_first_campaign || null,
-                content: cartAttrs._wt_first_content || null,
-                term: cartAttrs._wt_first_term || null,
-                referrer: cartAttrs._wt_first_referrer || null,
-                landing: cartAttrs._wt_first_landing || null,
-                fbclid: cartAttrs._wt_first_fbclid || null,
-                gclid: cartAttrs._wt_first_gclid || null,
-                campaign_id: cartAttrs._wt_first_campaign_id || null,
-                adset_id: cartAttrs._wt_first_adset_id || null,
-                adset_name: cartAttrs._wt_first_adset_name || null,
-                ad_id: cartAttrs._wt_first_ad_id || null,
-                ad_name: cartAttrs._wt_first_ad_name || null,
-              },
-              customer: {
-                email: processedOrderData.email || null,
-                fullName: data.customer?.fullName || null,
-                city: data.customer?.city || null,
-                postalCode: data.customer?.postalCode || null,
-                countryCode: data.customer?.countryCode || null,
-              },
-              items: (data.items || []).map((item: any) => ({
-                id: item.id || item.variant_id,
-                title: item.title,
-                quantity: item.quantity,
-                priceCents: item.priceCents || 0,
-                linePriceCents: item.linePriceCents || 0,
-                image: item.image || null,
-                variantTitle: item.variantTitle || null,
-              })),
-              shopDomain: data.shopDomain || "oltreboutique.com",
-            }
-
-            const analyticsRes = await fetch("/api/analytics/purchase", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(analyticsData),
-            })
-
-            if (analyticsRes.ok) {
-              const result = await analyticsRes.json()
-              console.log("[ThankYou] ✅ Analytics salvate su Firebase - ID:", result.id)
-            } else {
-              const errorData = await analyticsRes.json()
-              console.error("[ThankYou] ⚠️ Errore salvataggio analytics:", errorData)
-            }
-          } catch (err) {
-            console.error("[ThankYou] ⚠️ Errore chiamata analytics:", err)
-          }
-        }
-
-        saveAnalytics()
-
-        // SVUOTA CARRELLO
-        if (data.rawCart?.id || data.rawCart?.token) {
-          const cartId =
-            data.rawCart.id ||
-            `gid://shopify/Cart/${data.rawCart.token}`
-          console.log("[ThankYou] 🧹 Avvio svuotamento carrello")
-
-          try {
-            const clearRes = await fetch("/api/clear-cart", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                cartId: cartId,
-                sessionId: sessionId,
-              }),
-            })
-
-            const clearData = await clearRes.json()
-
-            if (clearRes.ok) {
-              console.log("[ThankYou] ✅ Carrello svuotato con successo")
-              setCartCleared(true)
-            } else {
-              console.error("[ThankYou] ⚠️ Errore svuotamento carrello:", clearData.error)
-            }
-          } catch (clearErr) {
-            console.error("[ThankYou] ⚠️ Errore chiamata clear-cart:", clearErr)
-          }
-        } else {
-          console.log("[ThankYou] ℹ️ Nessun carrello da svuotare")
-        }
-
-        setLoading(false)
-      } catch (err: any) {
-        console.error("[ThankYou] Errore caricamento ordine:", err)
-        setError(err.message)
-        setLoading(false)
-      }
+        if (res.ok) setSession(data)
+      } catch (_) {}
+      finally { setLoading(false) }
     }
-
-    loadOrderDataAndClearCart()
+    load()
   }, [sessionId])
 
-  const shopUrl = "https://oltreboutique.com"
-
-  const formatMoney = (cents: number | undefined) => {
-    const value = (cents ?? 0) / 100
-    return new Intl.NumberFormat("it-IT", {
-      style: "currency",
-      currency: orderData?.currency || "EUR",
-      minimumFractionDigits: 2,
-    }).format(value)
-  }
-
-  // 👇 CONFIG PRODOTTO UPSELL
-  const UPSELL_CONFIG = {
-    variantId: 55350819750273,
-    quantity: 1,
-    priceCents: 100,
-    title: "Aggiungi 1 pezzo in più a un prezzo speciale!",
-    subtitle: "Solo ora, subito dopo la conferma del tuo ordine.",
-    bullet1: "Nessun costo di spedizione aggiuntivo, stesso pacco.",
-    bullet2: "Perfetto come regalo o per averne sempre uno di scorta.",
-  }
-
-  const handleUpsell = async () => {
-    if (!sessionId || !orderData) return
-    setUpsellError(null)
-    setUpsellSuccess(false)
-    setUpsellLoading(true)
-
-    try {
-      const res = await fetch("/api/upsell", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          variantId: UPSELL_CONFIG.variantId,
-          quantity: UPSELL_CONFIG.quantity,
-          upsellAmountCents: UPSELL_CONFIG.priceCents,
-        }),
-      })
-
-      const data = await res.json()
-      console.log("[ThankYou] RISPOSTA UPSELL:", data)
-
-      if (!res.ok || !data.success) {
-        if (data.requiresAction) {
-          setUpsellError(
-            "La tua banca richiede un'autenticazione aggiuntiva per questo prodotto extra."
-          )
-        } else {
-          setUpsellError(
-            data.error || "Impossibile aggiungere il prodotto extra. Riprova."
-          )
-        }
-        setUpsellLoading(false)
-        return
-      }
-
-      setUpsellSuccess(true)
-      setUpsellLoading(false)
-    } catch (err: any) {
-      console.error("[ThankYou] Errore upsell:", err)
-      setUpsellError("Errore imprevisto durante l'aggiunta del prodotto extra.")
-      setUpsellLoading(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-gray-900 mb-4"></div>
-          <p className="text-sm text-gray-600">Caricamento ordine...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error || !orderData) {
-    return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4">
-        <div className="max-w-md text-center space-y-6 p-8 bg-white rounded-lg shadow-sm border border-gray-200">
-          <svg
-            className="w-16 h-16 text-red-500 mx-auto"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <h1 className="text-2xl font-bold text-gray-900">Ordine non trovato</h1>
-          <p className="text-gray-600">{error}</p>
-          <a
-            href={shopUrl}
-            className="inline-block mt-4 px-6 py-3 bg-gray-900 text-white font-medium rounded-md hover:bg-gray-800 transition"
-          >
-            Torna alla home
-          </a>
-        </div>
-      </div>
-    )
-  }
+  const currency = session?.currency || "EUR"
+  const customer = session?.customer || {}
+  const items = session?.items || []
+  const orderNumber = session?.shopifyOrderNumber
 
   return (
     <>
-      {/* FACEBOOK PIXEL INIT */}
-      <Script id="facebook-pixel" strategy="afterInteractive">
-        {`
-          !function(f,b,e,v,n,t,s)
-          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-          n.queue=[];t=b.createElement(e);t.async=!0;
-          t.src=v;s=b.getElementsByTagName(e)[0];
-          s.parentNode.insertBefore(t,s)}(window, document,'script',
-          'https://connect.facebook.net/en_US/fbevents.js');
-          
-          fbq('init', '${process.env.NEXT_PUBLIC_FB_PIXEL_ID}');
-          console.log('[ThankYou] ✅ Facebook Pixel inizializzato');
-        `}
-      </Script>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
 
-      {/* GOOGLE TAG */}
-      <Script
-        src="https://www.googletagmanager.com/gtag/js?id=AW-17391033186"
-        strategy="afterInteractive"
-      />
-      <Script
-        id="google-ads-init"
-        strategy="afterInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'AW-17391033186');
-            console.log('[ThankYou] ✅ Google Tag inizializzato');
-          `,
-        }}
-      />
-
-      <style jsx global>{`
-        * {
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0;
-        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-            "Helvetica Neue", Arial, sans-serif;
-          background: #fafafa;
-          color: #333333;
-          -webkit-font-smoothing: antialiased;
+          font-family: 'Sora', sans-serif;
+          background: linear-gradient(160deg, #fdf8f3 0%, #f0e9e0 100%);
+          min-height: 100vh;
         }
+
+        .page-wrap {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .page-header {
+          width: 100%;
+          padding: 16px 24px;
+          background: white;
+          border-bottom: 1px solid #e8e0d8;
+          display: flex;
+          justify-content: center;
+        }
+
+        .page-header img {
+          height: 36px;
+          max-width: 140px;
+          object-fit: contain;
+        }
+
+        .main-content {
+          width: 100%;
+          max-width: 560px;
+          padding: 32px 16px 80px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        /* Success hero */
+        .hero-card {
+          background: white;
+          border-radius: 24px;
+          padding: 36px 24px;
+          text-align: center;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+          animation: fadeUp 0.5s ease;
+        }
+
+        .check-circle {
+          width: 72px;
+          height: 72px;
+          background: linear-gradient(135deg, #22c55e, #16a34a);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+          font-size: 32px;
+          box-shadow: 0 8px 24px rgba(34,197,94,0.35);
+          animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+        }
+
+        .hero-title {
+          font-size: 26px;
+          font-weight: 800;
+          color: #1a1a1a;
+          margin-bottom: 8px;
+        }
+
+        .hero-subtitle {
+          font-size: 14px;
+          color: #666;
+          line-height: 1.6;
+          margin-bottom: 20px;
+        }
+
+        .order-number-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          background: #f5f0eb;
+          border: 1px solid #e8e0d8;
+          border-radius: 10px;
+          padding: 10px 18px;
+          font-size: 14px;
+          color: #555;
+        }
+
+        .order-number-badge strong {
+          color: #1a1a1a;
+          font-weight: 700;
+        }
+
+        /* Info card */
+        .info-card {
+          background: white;
+          border-radius: 20px;
+          padding: 24px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+          animation: fadeUp 0.5s ease 0.1s both;
+        }
+
+        .card-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #aaa;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 16px;
+        }
+
+        /* Items */
+        .item-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          padding: 10px 0;
+          border-bottom: 1px solid #f5f0eb;
+        }
+
+        .item-row:last-child { border-bottom: none; }
+
+        .item-img {
+          width: 52px;
+          height: 52px;
+          object-fit: cover;
+          border-radius: 10px;
+          flex-shrink: 0;
+        }
+
+        .item-img-placeholder {
+          width: 52px;
+          height: 52px;
+          background: #f0e9e0;
+          border-radius: 10px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+        }
+
+        .item-info { flex: 1; min-width: 0; }
+
+        .item-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #1a1a1a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .item-variant {
+          font-size: 12px;
+          color: #999;
+          margin-top: 2px;
+        }
+
+        .item-qty {
+          font-size: 12px;
+          color: #aaa;
+          margin-top: 2px;
+        }
+
+        .item-price {
+          font-size: 14px;
+          font-weight: 700;
+          color: #1a1a1a;
+          flex-shrink: 0;
+        }
+
+        /* Totals */
+        .totals {
+          border-top: 1px solid #f0e9e0;
+          padding-top: 14px;
+          margin-top: 4px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .total-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 14px;
+        }
+
+        .total-row .label { color: #666; }
+        .total-row .value { font-weight: 600; color: #1a1a1a; }
+        .total-row .green { color: #22c55e; font-weight: 600; }
+
+        .total-row.final {
+          font-size: 17px;
+          padding-top: 8px;
+          border-top: 1px solid #e8e0d8;
+        }
+
+        .total-row.final .label { font-weight: 700; color: #1a1a1a; }
+        .total-row.final .value { font-weight: 800; color: #1a1a1a; }
+
+        /* Upsell recap */
+        .upsell-recap {
+          background: linear-gradient(135deg, #fff7ed, #fef3c7);
+          border: 1px solid #fed7aa;
+          border-radius: 14px;
+          padding: 14px 16px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          margin-top: 12px;
+        }
+
+        .upsell-recap-img {
+          width: 44px;
+          height: 44px;
+          object-fit: cover;
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+
+        .upsell-recap-text { flex: 1; }
+
+        .upsell-recap-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #f59e0b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .upsell-recap-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1a1a1a;
+          margin-top: 2px;
+        }
+
+        /* Address */
+        .address-text {
+          font-size: 14px;
+          color: #555;
+          line-height: 1.8;
+        }
+
+        /* Steps */
+        .steps {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .step {
+          display: flex;
+          gap: 14px;
+          align-items: flex-start;
+        }
+
+        .step-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          flex-shrink: 0;
+        }
+
+        .step-text .step-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #1a1a1a;
+          margin-bottom: 2px;
+        }
+
+        .step-text .step-desc {
+          font-size: 12px;
+          color: #888;
+          line-height: 1.5;
+        }
+
+        /* Back btn */
+        .back-btn {
+          display: block;
+          width: 100%;
+          padding: 16px;
+          background: #1a1a1a;
+          color: white;
+          border: none;
+          border-radius: 14px;
+          font-size: 15px;
+          font-weight: 700;
+          font-family: 'Sora', sans-serif;
+          cursor: pointer;
+          text-align: center;
+          text-decoration: none;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .back-btn:hover {
+          background: #333;
+          transform: translateY(-1px);
+        }
+
+        /* Loading */
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 80px 20px;
+          gap: 16px;
+        }
+
+        .spinner {
+          width: 40px; height: 40px;
+          border: 3px solid #e8e0d8;
+          border-top-color: #22c55e;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      <div className="min-h-screen bg-[#fafafa]">
-        {/* HEADER */}
-        <header className="bg-white border-b border-gray-200">
-          <div className="max-w-6xl mx-auto px-4 py-4">
-            <div className="flex justify-center">
-              <a href={shopUrl}>
-                {/* ← LOGO NIMEA aggiornato */}
-                <img
-                  src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
-                  alt="Nimea"
-                  className="h-12"
-                  style={{ maxWidth: "180px" }}
-                />
-              </a>
-            </div>
-          </div>
+      <div className="page-wrap">
+        <header className="page-header">
+          <img
+            src="https://cdn.shopify.com/s/files/1/0927/1902/2465/files/LOGO_NIMEA.png?v=1771617668"
+            alt="Nimea"
+          />
         </header>
 
-        <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
-          {/* ORDER CARD */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
-            <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto mb-6">
-              <svg
-                className="w-8 h-8 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
+        <div className="main-content">
+          {loading ? (
+            <div className="loading-state">
+              <div className="spinner" />
+              <p style={{ fontSize: 14, color: "#999" }}>Caricamento ordine…</p>
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 text-center mb-2">
-              Ordine confermato
-            </h1>
-            <p className="text-center text-gray-600 mb-6">
-              Grazie per il tuo acquisto!
-            </p>
-
-            {orderData.shopifyOrderNumber && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
-                <p className="text-sm text-gray-600 mb-1">Numero ordine</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  #{orderData.shopifyOrderNumber}
+          ) : (
+            <>
+              {/* Hero */}
+              <div className="hero-card">
+                <div className="check-circle">✓</div>
+                <h1 className="hero-title">
+                  {customer.fullName
+                    ? `Grazie, ${customer.fullName.split(" ")[0]}!`
+                    : "Grazie per il tuo ordine!"}
+                </h1>
+                <p className="hero-subtitle">
+                  Il tuo ordine è confermato. Riceverai una email di conferma
+                  {customer.email ? ` a ${customer.email}` : ""} con tutti i dettagli.
                 </p>
-              </div>
-            )}
-
-            {orderData.email && (
-              <div className="border-t border-gray-200 pt-6 mb-6">
-                <div className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">
-                      Conferma inviata a
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {orderData.email}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {orderData.items && orderData.items.length > 0 && (
-              <div className="border-t border-gray-200 pt-6 mb-6">
-                <h2 className="text-base font-semibold text-gray-900 mb-4">
-                  Articoli acquistati
-                </h2>
-                <div className="space-y-4">
-                  {orderData.items.map((item, idx) => (
-                    <div key={idx} className="flex gap-4">
-                      {item.image && (
-                        <div className="w-16 h-16 flex-shrink-0 bg-gray-100 rounded border border-gray-200">
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="w-full h-full object-cover rounded"
-                          />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {item.title}
-                        </p>
-                        {item.variantTitle && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            {item.variantTitle}
-                          </p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-1">
-                          Quantità: {item.quantity}
-                        </p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {formatMoney(item.linePriceCents || item.priceCents || 0)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="border-t border-gray-200 pt-6">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotale</span>
-                  <span className="text-gray-900">
-                    {formatMoney(orderData.subtotalCents)}
-                  </span>
-                </div>
-
-                {orderData.discountCents && orderData.discountCents > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Sconto</span>
-                    <span>-{formatMoney(orderData.discountCents)}</span>
+                {orderNumber && (
+                  <div className="order-number-badge">
+                    📦 Ordine <strong>#{orderNumber}</strong>
                   </div>
                 )}
+              </div>
 
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Spedizione</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-600 font-bold">GRATIS</span>
-                    <svg
-                      className="w-4 h-4 text-green-600"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+              {/* Riepilogo ordine */}
+              {items.length > 0 && (
+                <div className="info-card" style={{ animationDelay: "0.15s" }}>
+                  <p className="card-title">Riepilogo ordine</p>
+
+                  {items.map((item, idx) => (
+                    <div key={idx} className="item-row">
+                      {item.image ? (
+                        <img src={item.image} alt={item.title} className="item-img" />
+                      ) : (
+                        <div className="item-img-placeholder">📦</div>
+                      )}
+                      <div className="item-info">
+                        <p className="item-title">{item.title}</p>
+                        {item.variantTitle && <p className="item-variant">{item.variantTitle}</p>}
+                        <p className="item-qty">Qtà: {item.quantity}</p>
+                      </div>
+                      <p className="item-price">
+                        {formatMoney(item.linePriceCents || (item.priceCents || 0) * item.quantity, currency)}
+                      </p>
+                    </div>
+                  ))}
+
+                  {/* Upsell aggiunto */}
+                  {session?.upsellStatus === "paid" && session.upsellProduct && (
+                    <div className="upsell-recap">
+                      {session.upsellProduct.image && (
+                        <img
+                          src={session.upsellProduct.image}
+                          alt={session.upsellProduct.productTitle}
+                          className="upsell-recap-img"
+                        />
+                      )}
+                      <div className="upsell-recap-text">
+                        <p className="upsell-recap-label">✨ Extra aggiunto</p>
+                        <p className="upsell-recap-title">
+                          {session.upsellProduct.productTitle}
+                          {session.upsellProduct.variantTitle &&
+                            session.upsellProduct.variantTitle !== "Default Title"
+                            ? ` — ${session.upsellProduct.variantTitle}`
+                            : ""}
+                        </p>
+                      </div>
+                      <p className="item-price">
+                        {formatMoney(session.upsellAmountCents, currency)}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="totals">
+                    <div className="total-row">
+                      <span className="label">Spedizione</span>
+                      <span className="green">Gratuita</span>
+                    </div>
+                    <div className="total-row final">
+                      <span className="label">Totale pagato</span>
+                      <span className="value">
+                        {formatMoney(
+                          (session?.totalCents || 0) + (session?.upsellAmountCents || 0),
+                          currency
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex justify-between text-lg font-semibold pt-3 border-t border-gray-200">
-                  <span>Totale</span>
-                  <span className="text-xl">
-                    {formatMoney(orderData.totalCents)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 🔥 BLOCCO UPSELL */}
-          {!upsellSuccess && (
-            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-6 sm:p-8 mb-8 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold bg-red-600 text-white rounded-full uppercase tracking-wide">
-                  Ultima occasione
-                </span>
-                <span className="text-xs text-red-700 font-semibold">
-                  Valido solo su questa pagina
-                </span>
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
-                Vuoi aggiungere 1 pezzo in più a un prezzo speciale?
-              </h2>
-              <p className="text-sm text-gray-700 mb-4">
-                Il tuo ordine è confermato. Solo ora puoi aggiungere un prodotto
-                extra alla tua spedizione senza reinserire i dati della carta.
-              </p>
-
-              <div className="bg-white border border-yellow-200 rounded-lg p-4 mb-4">
-                <p className="text-sm font-semibold text-gray-900 mb-1">
-                  {UPSELL_CONFIG.title}
-                </p>
-                <p className="text-xs text-gray-600 mb-3">
-                  {UPSELL_CONFIG.subtitle}
-                </p>
-                <ul className="text-xs text-gray-700 mb-3 space-y-1">
-                  <li>• {UPSELL_CONFIG.bullet1}</li>
-                  <li>• {UPSELL_CONFIG.bullet2}</li>
-                  <li>• Aggiunto allo stesso nome e indirizzo di spedizione</li>
-                </ul>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Prezzo speciale ora:</span>
-                  <span className="text-lg font-bold text-red-600">
-                    {formatMoney(UPSELL_CONFIG.priceCents)}
-                  </span>
-                </div>
-              </div>
-
-              {upsellError && (
-                <div className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-                  {upsellError}
                 </div>
               )}
 
-              <button
-                onClick={handleUpsell}
-                disabled={upsellLoading}
-                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed mb-2"
-              >
-                {upsellLoading
-                  ? "Aggiunta del prodotto extra in corso..."
-                  : "Sì, aggiungi questo prodotto extra al mio ordine"}
-              </button>
-              <p className="text-[11px] text-gray-500 text-center">
-                Cliccando autorizzi un addebito extra una tantum di{" "}
-                {formatMoney(UPSELL_CONFIG.priceCents)} con lo stesso metodo di pagamento.
-              </p>
-            </div>
-          )}
+              {/* Indirizzo consegna */}
+              {customer.address1 && (
+                <div className="info-card" style={{ animationDelay: "0.2s" }}>
+                  <p className="card-title">Indirizzo di consegna</p>
+                  <p className="address-text">
+                    {customer.fullName}<br />
+                    {customer.address1}<br />
+                    {customer.postalCode} {customer.city} ({customer.province})<br />
+                    {customer.countryCode}
+                  </p>
+                </div>
+              )}
 
-          {upsellSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
-              <p className="text-sm text-green-800 text-center">
-                ✓ Prodotto extra aggiunto con successo. Riceverai una conferma
-                d'ordine separata per l'upsell.
-              </p>
-            </div>
-          )}
+              {/* Cosa succede ora */}
+              <div className="info-card" style={{ animationDelay: "0.25s" }}>
+                <p className="card-title">Cosa succede ora</p>
+                <div className="steps">
+                  <div className="step">
+                    <div className="step-icon" style={{ background: "#eff6ff" }}>📧</div>
+                    <div className="step-text">
+                      <p className="step-title">Email di conferma</p>
+                      <p className="step-desc">Riceverai a breve una email con il riepilogo del tuo ordine</p>
+                    </div>
+                  </div>
+                  <div className="step">
+                    <div className="step-icon" style={{ background: "#f0fdf4" }}>📦</div>
+                    <div className="step-text">
+                      <p className="step-title">Preparazione ordine</p>
+                      <p className="step-desc">Il tuo ordine verrà preparato e spedito entro 24-48 ore</p>
+                    </div>
+                  </div>
+                  <div className="step">
+                    <div className="step-icon" style={{ background: "#fefce8" }}>🚚</div>
+                    <div className="step-text">
+                      <p className="step-title">Consegna Express</p>
+                      <p className="step-desc">Consegna in 2-4 giorni lavorativi con tracking via email</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-          {/* INFO BOX */}
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 mb-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              Cosa succede adesso?
-            </h2>
-            <ul className="space-y-3 text-sm text-gray-700">
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600 font-semibold">1.</span>
-                <span>Riceverai un'email di conferma con tutti i dettagli</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600 font-semibold">2.</span>
-                <span>Il tuo ordine verrà preparato entro 1-2 giorni lavorativi</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600 font-semibold">3.</span>
-                <span>Riceverai il tracking della spedizione via email</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* PULSANTI */}
-          <div className="space-y-3">
-            <a
-              href={shopUrl}
-              className="block w-full py-3 px-4 bg-gray-900 text-white text-center font-medium rounded-md hover:bg-gray-800 transition"
-            >
-              Torna alla home
-            </a>
-            <a
-              href={`${shopUrl}/collections/all`}
-              className="block w-full py-3 px-4 bg-white text-gray-900 text-center font-medium rounded-md border border-gray-300 hover:bg-gray-50 transition"
-            >
-              Continua lo shopping
-            </a>
-          </div>
-
-          {/* SUPPORTO */}
-          <div className="text-center mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-2">Hai bisogno di aiuto?</p>
-            <a
-              href={`${shopUrl}/pages/contatti`}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Contatta il supporto →
-            </a>
-          </div>
-
-          {/* CARRELLO SVUOTATO */}
-          {cartCleared && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-xs text-green-800 text-center">
-                ✓ Carrello svuotato con successo
-              </p>
-            </div>
+              {/* Back to store */}
+              <a href="https://oltreboutique.com" className="back-btn">
+                Continua lo shopping →
+              </a>
+            </>
           )}
         </div>
-
-        {/* FOOTER */}
-        <footer className="border-t border-gray-200 py-6 mt-12">
-          <div className="max-w-6xl mx-auto px-4 text-center">
-            <p className="text-xs text-gray-500">
-              © 2026 Tutti i diritti riservati.
-            </p>
-          </div>
-        </footer>
       </div>
     </>
   )
@@ -777,8 +567,11 @@ export default function ThankYouPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-gray-900"></div>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center", fontFamily: "sans-serif" }}>
+            <div style={{ width: 40, height: 40, border: "3px solid #e8e0d8", borderTopColor: "#22c55e", borderRadius: "50%", margin: "0 auto 12px" }} />
+            <p style={{ fontSize: 14, color: "#999" }}>Caricamento…</p>
+          </div>
         </div>
       }
     >
@@ -786,4 +579,3 @@ export default function ThankYouPage() {
     </Suspense>
   )
 }
-
