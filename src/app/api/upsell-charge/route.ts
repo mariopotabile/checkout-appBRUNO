@@ -118,11 +118,14 @@ export async function POST(req: NextRequest) {
 
     // 6. Crea ordine Shopify separato per questo upsell
     const shopifyDomain = config.shopify?.shopDomain
-    const adminToken    = config.shopify?.adminToken
+    const clientId      = config.shopify?.clientId
+    const clientSecret  = config.shopify?.clientSecret
     let shopifyUpdated  = false
 
-    if (shopifyDomain && adminToken) {
+    if (shopifyDomain && clientId && clientSecret) {
       try {
+        const { getShopifyAccessToken } = await import('@/lib/shopifyAuth')
+        const adminToken = await getShopifyAccessToken(shopifyDomain, clientId, clientSecret)
         const upsellPriceStr = (priceCents / 100).toFixed(2)
         const customer       = sessionData.customer || {}
         const nameParts      = (customer.fullName || "Cliente").split(" ")
