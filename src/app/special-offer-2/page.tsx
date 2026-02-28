@@ -459,7 +459,7 @@ function SpecialOffer2Content() {
               </div>
 
               <div className="card">
-                <div className="offer-tag">⚡ Ultima Offerta Esclusiva</div>
+                <div className="offer-tag">🔥 Il 93% dei clienti ha approfittato di questa offerta</div>
 
                 <div className="product-img-wrap">
                   {productImage ? (

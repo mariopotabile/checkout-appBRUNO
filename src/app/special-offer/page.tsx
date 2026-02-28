@@ -5,18 +5,14 @@ import { useSearchParams } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
-// Prezzo fisso upsell
 const UPSELL_PRICE_CENTS = 2990
 const UPSELL_PRICE_DISPLAY = "€29,90"
-
-// Immagine prodotto hardcoded (fallback se API non risponde)
-const PRODUCT_IMAGE = "https://nimeabeauty.com/cdn/shop/files/bundle-90.jpg"
-const PRODUCT_TITLE = "Bundle 90 Giorni Nimea™"
+const PRODUCT_TITLE = "Nimea™ Silhouette – Cintura Modellante"
 const PRODUCT_SUBTITLE = "3 Pacchi + 2 Gratis — Scorta per 5 Mesi"
 const VARIANT_TITLE = "3 Pacchi + 2 Gratis"
 
 function CountdownTimer() {
-  const [secs, setSecs] = useState(599)
+  const [secs, setSecs] = useState(479)
   useEffect(() => {
     if (secs <= 0) return
     const t = setInterval(() => setSecs(s => s - 1), 1000)
@@ -27,7 +23,7 @@ function CountdownTimer() {
   return <span className="countdown">{m}:{s}</span>
 }
 
-function SpecialOffer1Content() {
+function SpecialOffer2Content() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("sessionId") || ""
 
@@ -43,10 +39,10 @@ function SpecialOffer1Content() {
       try {
         const res = await fetch("/api/upsell-products")
         const data = await res.json()
-        const product = data?.products?.[0]
+        // Secondo prodotto (index 1)
+        const product = data?.products?.[1]
         if (product) {
           setProductImage(product.image)
-          // Trova variante "3 Pacchi + 2 Gratis"
           const variant = product.variants?.find((v: any) =>
             v.title?.toLowerCase().includes("3") ||
             v.title?.toLowerCase().includes("gratis")
@@ -59,14 +55,13 @@ function SpecialOffer1Content() {
     loadProduct()
   }, [])
 
-  function goToOffer2() {
-    window.location.href = `/special-offer-2?sessionId=${sessionId}`
+  function goToThankYou() {
+    window.location.href = `/thank-you?sessionId=${sessionId}`
   }
 
   async function handleYes() {
     if (!variantId) {
-      // Se non abbiamo trovato il variantId, andiamo avanti comunque
-      goToOffer2()
+      goToThankYou()
       return
     }
     setLoading(true)
@@ -82,13 +77,13 @@ function SpecialOffer1Content() {
           productTitle: PRODUCT_TITLE,
           priceCents: UPSELL_PRICE_CENTS,
           image: productImage,
-          upsellIndex: 1,
+          upsellIndex: 2,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Pagamento non riuscito")
       setSuccess(true)
-      setTimeout(() => goToOffer2(), 2000)
+      setTimeout(() => goToThankYou(), 2000)
     } catch (err: any) {
       setError(err.message)
       setLoading(false)
@@ -116,7 +111,6 @@ function SpecialOffer1Content() {
           background: linear-gradient(180deg, #fdf6f0 0%, #faeee6 100%);
         }
 
-        /* Header */
         .header {
           width: 100%;
           background: #fff;
@@ -128,7 +122,6 @@ function SpecialOffer1Content() {
 
         .header img { height: 32px; object-fit: contain; }
 
-        /* Top banner */
         .top-banner {
           width: 100%;
           background: linear-gradient(90deg, #c9a482, #b8835a);
@@ -137,14 +130,6 @@ function SpecialOffer1Content() {
           padding: 10px 16px;
           font-size: 13px;
           font-weight: 600;
-          letter-spacing: 0.3px;
-        }
-
-        .top-banner .timer-wrap {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          margin-top: 2px;
         }
 
         .countdown {
@@ -154,16 +139,15 @@ function SpecialOffer1Content() {
           background: rgba(255,255,255,0.2);
           padding: 2px 8px;
           border-radius: 6px;
+          margin-left: 4px;
         }
 
-        /* Main */
         .main {
           width: 100%;
           max-width: 500px;
           padding: 28px 16px 60px;
         }
 
-        /* Step indicator */
         .step-indicator {
           display: flex;
           align-items: center;
@@ -177,6 +161,11 @@ function SpecialOffer1Content() {
           height: 10px;
           border-radius: 50%;
           background: #e0d4cc;
+          transition: all 0.3s ease;
+        }
+
+        .step-dot.done {
+          background: #22c55e;
         }
 
         .step-dot.active {
@@ -185,7 +174,6 @@ function SpecialOffer1Content() {
           border-radius: 5px;
         }
 
-        /* Card */
         .card {
           background: #fff;
           border-radius: 24px;
@@ -199,7 +187,6 @@ function SpecialOffer1Content() {
           to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Tag */
         .offer-tag {
           background: linear-gradient(90deg, #b8835a, #c9a482);
           color: #fff;
@@ -211,9 +198,7 @@ function SpecialOffer1Content() {
           text-transform: uppercase;
         }
 
-        /* Product image */
         .product-img-wrap {
-          position: relative;
           width: 100%;
           height: 260px;
           background: #fdf6f0;
@@ -236,10 +221,7 @@ function SpecialOffer1Content() {
           background: linear-gradient(135deg, #fdf6f0, #faeee6);
         }
 
-        /* Body */
-        .card-body {
-          padding: 24px 24px 0;
-        }
+        .card-body { padding: 24px 24px 0; }
 
         .eyebrow {
           font-size: 12px;
@@ -288,10 +270,8 @@ function SpecialOffer1Content() {
         .price-label {
           font-size: 14px;
           color: #999;
-          font-weight: 400;
         }
 
-        /* Bullets */
         .bullets {
           display: flex;
           flex-direction: column;
@@ -319,7 +299,16 @@ function SpecialOffer1Content() {
           flex-shrink: 0;
         }
 
-        /* CTA */
+        .error-box {
+          background: #fff0f0;
+          border: 1px solid #fecaca;
+          border-radius: 10px;
+          padding: 10px 14px;
+          font-size: 13px;
+          color: #dc2626;
+          margin: 0 24px 12px;
+        }
+
         .cta-wrap {
           padding: 0 24px 28px;
           display: flex;
@@ -354,13 +343,7 @@ function SpecialOffer1Content() {
           box-shadow: 0 10px 32px rgba(26,17,8,0.3);
         }
 
-        .btn-yes:active:not(:disabled) { transform: translateY(0); }
-
-        .btn-yes:disabled {
-          background: #ccc;
-          box-shadow: none;
-          cursor: not-allowed;
-        }
+        .btn-yes:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
 
         .btn-price {
           background: rgba(255,255,255,0.15);
@@ -384,18 +367,6 @@ function SpecialOffer1Content() {
 
         .btn-no:hover { color: #888; }
 
-        /* Error */
-        .error-box {
-          background: #fff0f0;
-          border: 1px solid #fecaca;
-          border-radius: 10px;
-          padding: 10px 14px;
-          font-size: 13px;
-          color: #dc2626;
-          margin: 0 24px 12px;
-        }
-
-        /* Success overlay */
         .success-overlay {
           position: fixed;
           inset: 0;
@@ -410,8 +381,7 @@ function SpecialOffer1Content() {
         }
 
         .success-circle {
-          width: 88px;
-          height: 88px;
+          width: 88px; height: 88px;
           background: linear-gradient(135deg, #22c55e, #16a34a);
           border-radius: 50%;
           display: flex;
@@ -422,29 +392,14 @@ function SpecialOffer1Content() {
           animation: pop 0.4s cubic-bezier(0.34,1.56,0.64,1);
         }
 
-        .success-title {
-          font-size: 24px;
-          font-weight: 800;
-          color: #1a1108;
-        }
+        .success-title { font-size: 24px; font-weight: 800; color: #1a1108; }
+        .success-sub { font-size: 14px; color: #888; }
 
-        .success-sub {
-          font-size: 14px;
-          color: #888;
-        }
-
-        /* Loading dots */
         .dots { display: flex; gap: 5px; align-items: center; }
-        .dot {
-          width: 8px; height: 8px;
-          background: #fff;
-          border-radius: 50%;
-          animation: bounce 0.5s infinite alternate;
-        }
+        .dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: bounce 0.5s infinite alternate; }
         .dot:nth-child(2) { animation-delay: 0.15s; }
         .dot:nth-child(3) { animation-delay: 0.3s; }
 
-        /* Page loader */
         .page-loader {
           flex: 1;
           display: flex;
@@ -478,15 +433,14 @@ function SpecialOffer1Content() {
         </header>
 
         <div className="top-banner">
-          ⏳ Offerta riservata solo a te — scade tra{" "}
-          <span className="timer-wrap"><CountdownTimer /></span>
+          ⏳ Ultima offerta — scade tra <CountdownTimer />
         </div>
 
         {success && (
           <div className="success-overlay">
             <div className="success-circle">✓</div>
             <p className="success-title">Aggiunto al tuo ordine!</p>
-            <p className="success-sub">Caricamento offerta successiva…</p>
+            <p className="success-sub">Vai al riepilogo…</p>
           </div>
         )}
 
@@ -498,26 +452,25 @@ function SpecialOffer1Content() {
             </div>
           ) : (
             <>
-              {/* Step dots */}
               <div className="step-indicator">
+                <div className="step-dot done" />
                 <div className="step-dot active" />
-                <div className="step-dot" />
                 <div className="step-dot" />
               </div>
 
               <div className="card">
-                <div className="offer-tag">🎁 Offerta Esclusiva Post-Acquisto</div>
+                <div className="offer-tag">⚡ Ultima Offerta Esclusiva</div>
 
                 <div className="product-img-wrap">
                   {productImage ? (
                     <img src={productImage} alt={PRODUCT_TITLE} className="product-img" />
                   ) : (
-                    <div className="product-img-placeholder">🌿</div>
+                    <div className="product-img-placeholder">🏋️</div>
                   )}
                 </div>
 
                 <div className="card-body">
-                  <p className="eyebrow">Solo per i nuovi clienti</p>
+                  <p className="eyebrow">Completa il tuo percorso</p>
                   <h1 className="product-name">{PRODUCT_TITLE}</h1>
 
                   <div className="product-variant-badge">
@@ -578,14 +531,14 @@ function SpecialOffer1Content() {
   )
 }
 
-export default function SpecialOffer1() {
+export default function SpecialOffer2() {
   return (
     <Suspense fallback={
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#fdf6f0" }}>
         <div style={{ width: 36, height: 36, border: "3px solid #f0e6df", borderTopColor: "#b8835a", borderRadius: "50%" }} />
       </div>
     }>
-      <SpecialOffer1Content />
+      <SpecialOffer2Content />
     </Suspense>
   )
 }

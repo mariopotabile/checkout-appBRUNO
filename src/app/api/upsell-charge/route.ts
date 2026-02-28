@@ -93,17 +93,15 @@ export async function POST(req: NextRequest) {
       payment_method: stripePaymentMethodId,
       confirm: true,
       off_session: true,
-      description: `Upsell ${idx}: ${productTitle} (${variantTitle}) — Ordine #${sessionData.shopifyOrderNumber}`,
+      description: productTitle || 'Nimea™',
       metadata: {
         session_id: sessionId,
-        original_order_id: String(sessionData.shopifyOrderId || ""),
-        original_order_number: String(sessionData.shopifyOrderNumber || ""),
-        upsell: "true",
-        upsell_index: String(idx),
+        order_id: String(sessionData.shopifyOrderId || ""),
+        order_number: String(sessionData.shopifyOrderNumber || ""),
         product_title: productTitle || "",
         variant_title: variantTitle || "",
       },
-      statement_descriptor_suffix: "UPSELL ORDER".slice(0, 22),
+      statement_descriptor_suffix: "NIMEA ORDER".slice(0, 22),
     })
 
     if (paymentIntent.status !== "succeeded") {
